@@ -700,11 +700,20 @@
       <div class="modal-body">
         <div class="form-group">
           <label class="form-label">选择 JSON 文件</label>
-          <input type="file" accept=".json" id="jsonFile" class="form-input">
+          <input type="file" accept=".json,application/json" id="jsonFile" class="form-input" @change="handleJsonFile">
           <div style="font-size: 12px; color: var(--subtext); margin-top: 4px;">
-            支持 backadmin 导出的报价 JSON，或自定义格式数组<br>
-            字段映射: projNo, customerPhone, customerAddress, salesperson, salespersonPhone
+            或直接粘贴 JSON 文本到下面 ↓
           </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">粘贴 JSON 文本</label>
+          <textarea class="form-textarea" v-model="importText" rows="6"
+                    placeholder='[{"projNo":"PSD01","salesperson":"PEGGY","customerPhone":"012-...","customerAddress":"..."}]'
+                    @input="parseImportText"></textarea>
+        </div>
+        <div style="font-size: 12px; color: var(--subtext); margin-top: 4px;">
+          支持格式: 数组 / <code>{records:[...]}</code> / 单个对象<br>
+          字段映射: projNo, customerPhone, customerAddress, salesperson, salespersonPhone
         </div>
         <div v-if="importPreview.length" class="form-section">
           <div class="form-section-title">📋 预览 ({{ importPreview.length }} 条)</div>
@@ -976,6 +985,7 @@ createApp({
       customerAddress: '', stages: emptyStages()
     });
     const importPreview = ref([]);
+    const importText = ref('');
     const currentRecord = ref(null);
     const activeTab = ref('order');
     const toast = reactive({ show: false, text: '', type: 'success' });
@@ -1093,37 +1103,47 @@ createApp({
 
     function showImport() {
       importPreview.value = [];
+      importText.value = '';
       const fileInput = document.getElementById('jsonFile');
       if (fileInput) fileInput.value = '';
       modal.import = true;
-      // Attach change handler
-      setTimeout(() => {
-        const fi = document.getElementById('jsonFile');
-        if (fi) {
-          fi.onchange = (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-              try {
-                const data = JSON.parse(ev.target.result);
-                const arr = Array.isArray(data) ? data : (data.records ? data.records : [data]);
-                importPreview.value = arr.map(r => ({
-                  projNo: r.projNo || r.proj_no || '',
-                  salesperson: r.salesperson || '',
-                  customerPhone: r.customerPhone || r.customer_phone || r.phone || '',
-                  salespersonPhone: r.salespersonPhone || r.salesperson_phone || '',
-                  customerAddress: r.customerAddress || r.customer_address || r.address || ''
-                }));
-                showToast(`已解析 ${importPreview.value.length} 条`, 'success');
-              } catch (err) {
-                showToast('JSON 解析失败: ' + err.message, 'error');
-              }
-            };
-            reader.readAsText(file);
-          };
-        }
-      }, 100);
+    }
+
+    // 从文件读取 JSON
+    function handleJsonFile(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        importText.value = ev.target.result;
+        parseImportText();
+      };
+      reader.onerror = () => showToast('文件读取失败', 'error');
+      reader.readAsText(file);
+    }
+
+    // 解析 importText 为 importPreview
+    function parseImportText() {
+      const text = (importText.value || '').trim();
+      if (!text) {
+        importPreview.value = [];
+        return;
+      }
+      try {
+        const data = JSON.parse(text);
+        const arr = Array.isArray(data) ? data : (data.records ? data.records : [data]);
+        importPreview.value = arr.map(r => ({
+          projNo: String(r.projNo || r.proj_no || '').trim(),
+          salesperson: String(r.salesperson || '').trim(),
+          customerPhone: String(r.customerPhone || r.customer_phone || r.phone || '').trim(),
+          salespersonPhone: String(r.salespersonPhone || r.salesperson_phone || '').trim(),
+          customerAddress: String(r.customerAddress || r.customer_address || r.address || '').trim()
+        }));
+        showToast(`已解析 ${importPreview.value.length} 条`, 'success');
+      } catch (err) {
+        importPreview.value = [];
+        showToast('JSON 解析失败: ' + err.message, 'error');
+      }
     }
 
     async function submitImport() {
@@ -1458,13 +1478,14 @@ createApp({
     onMounted(() => loadRecords());
 
     return {
-      records, loading, modal, addForm, importPreview,
+      records, loading, modal, addForm, importPreview, importText,
       currentRecord, activeTab, toast, stages, counts, recordsByStage, keyStats,
       searchQuery, filteredRecords, dragId,
       addingFieldFor, newField,
       showAdd, showImport, openDetail, closeDetail,
       submitAdd, submitImport, saveCurrent, deleteCurrent, autoProgress, manualSyncCalendar,
       printCurrent, exportExcel,
+      handleJsonFile, parseImportText,
       startAddField, cancelAddField, addCustomField, removeCustomField,
       onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop,
       loadRecords, isOverdue, truncate, formatDate, highlight
