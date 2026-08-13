@@ -19,7 +19,7 @@
 // ===== 配置 =====
 const RECORDS_FOLDER_NAME = 'SquirrelInstall_Records';
 const CALENDAR_ID = 'squirreldesigner9068@gmail.com';
-const VERSION = 'v1.4.1';
+const VERSION = 'v1.6';
 
 // ===== 入口 =====
 function doGet(e) { return handleRequest(e); }
@@ -237,10 +237,10 @@ function syncToCalendar(recordId) {
 // ===== 数据模型工具 =====
 function emptyStages() {
   return {
-    order:     { date: '', factory: '',  remarks: '' },
-    container: { date: '', company: '',  remarks: '' },
-    arrival:   { date: '', location: '', remarks: '' },
-    install:   { date: '', installer: '', remarks: '' }
+    order:     { date: '', factory: '',  remarks: '', customFields: [] },
+    container: { date: '', company: '',  remarks: '', customFields: [] },
+    arrival:   { date: '', location: '', remarks: '', customFields: [] },
+    install:   { date: '', installer: '', remarks: '', customFields: [] }
   };
 }
 
@@ -250,6 +250,10 @@ function sanitizeStages(raw) {
   ['order', 'container', 'arrival', 'install'].forEach(k => {
     if (raw[k] && typeof raw[k] === 'object') {
       base[k] = Object.assign({}, base[k], raw[k]);
+      // customFields 必须是数组
+      if (!Array.isArray(base[k].customFields)) {
+        base[k].customFields = [];
+      }
     }
   });
   return base;

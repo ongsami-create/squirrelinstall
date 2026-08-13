@@ -172,6 +172,32 @@
   .stat-value { font-size: 24px; font-weight: 700; }
   .stat-label { font-size: 12px; color: var(--subtext); }
 
+  /* Key dates row (Dashboard 强化) */
+  .key-dates {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    padding: 0 24px 16px;
+  }
+  .key-date-card {
+    background: var(--card);
+    border-radius: 8px;
+    padding: 10px 14px;
+    box-shadow: var(--shadow);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-left: 4px solid;
+  }
+  .key-date-card.today { border-left-color: var(--order); }
+  .key-date-card.week  { border-left-color: var(--install); }
+  .key-date-card.overdue { border-left-color: var(--danger); }
+  .key-date-icon { font-size: 20px; }
+  .key-date-content { flex: 1; }
+  .key-date-value { font-size: 20px; font-weight: 700; line-height: 1.2; }
+  .key-date-label { font-size: 11px; color: var(--subtext); }
+  .key-date-card.overdue .key-date-value { color: var(--danger); }
+
   /* ===== Kanban ===== */
   .kanban {
     display: grid;
@@ -428,14 +454,58 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  /* Custom fields (B) */
+  .custom-fields { background: #f7f8fa; border-radius: 6px; padding: 10px; margin-top: 8px; }
+  .custom-fields-title { font-size: 12px; font-weight: 700; color: var(--subtext); margin-bottom: 8px; }
+  .custom-field { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: end; margin-bottom: 6px; }
+  .custom-field .form-label { margin: 0; }
+  .custom-field .form-input { padding: 6px 8px; font-size: 13px; }
+  .btn-icon-sm {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--subtext);
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    line-height: 1;
+  }
+  .btn-icon-sm:hover { background: var(--danger); color: white; border-color: var(--danger); }
+  .custom-field-form {
+    display: grid;
+    grid-template-columns: 1fr 90px 1fr auto auto;
+    gap: 6px;
+    align-items: center;
+    margin-top: 6px;
+  }
+  .custom-field-form .form-input,
+  .custom-field-form .form-select { padding: 6px 8px; font-size: 13px; }
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+
   /* ===== Mobile ===== */
   @media (max-width: 768px) {
     .dashboard { grid-template-columns: repeat(2, 1fr); }
+    .key-dates { grid-template-columns: 1fr; }
     .kanban { grid-template-columns: 1fr; }
     .form-row { grid-template-columns: 1fr; }
     .topbar { flex-direction: column; gap: 10px; align-items: stretch; }
     .actions { justify-content: center; flex-wrap: wrap; }
     .search-box { max-width: 100%; margin: 0; }
+    .custom-field-form { grid-template-columns: 1fr; }
+  }
+
+  /* Drag-and-drop */
+  .card[draggable="true"] { cursor: grab; }
+  .card[draggable="true"]:active { cursor: grabbing; }
+  .card.dragging { opacity: 0.4; }
+  .column.drag-over { background: #d8eafd; box-shadow: inset 0 0 0 2px var(--primary); }
+
+  /* Print styles */
+  @media print {
+    body * { visibility: hidden; }
+    .print-area, .print-area * { visibility: visible; }
+    .print-area { position: absolute; left: 0; top: 0; width: 100%; padding: 20px; }
   }
 </style>
 </head>
@@ -460,6 +530,7 @@
       <button v-if="searchQuery" class="search-clear" @click="searchQuery = ''" title="清空">×</button>
     </div>
     <div class="actions">
+      <button class="btn btn-secondary" @click="exportExcel" title="导出全部为 Excel">⬇ Excel</button>
       <button class="btn btn-secondary" @click="showImport">📥 导入 JSON</button>
       <button class="btn btn-primary" @click="showAdd">+ 手动补单</button>
       <button class="btn-icon" @click="loadRecords" title="刷新">🔄</button>
@@ -498,9 +569,37 @@
     </div>
   </section>
 
+  <!-- Key dates (D: Dashboard 强化) -->
+  <section class="key-dates">
+    <div class="key-date-card today">
+      <div class="key-date-icon">📦</div>
+      <div class="key-date-content">
+        <div class="key-date-value">{{ keyStats.todayContainer }}</div>
+        <div class="key-date-label">今日装柜</div>
+      </div>
+    </div>
+    <div class="key-date-card week">
+      <div class="key-date-icon">🔨</div>
+      <div class="key-date-content">
+        <div class="key-date-value">{{ keyStats.weekInstall }}</div>
+        <div class="key-date-label">本周安装 (7天内)</div>
+      </div>
+    </div>
+    <div class="key-date-card overdue">
+      <div class="key-date-icon">⚠️</div>
+      <div class="key-date-content">
+        <div class="key-date-value">{{ keyStats.overdue }}</div>
+        <div class="key-date-label">逾期未完成</div>
+      </div>
+    </div>
+  </section>
+
   <!-- Kanban -->
   <main class="kanban">
-    <div v-for="stage in stages" :key="stage.key" class="column">
+    <div v-for="stage in stages" :key="stage.key" class="column"
+         @dragover.prevent="onDragOver($event)"
+         @dragleave="onDragLeave($event)"
+         @drop.prevent="onDrop($event, stage.key)">
       <div class="column-header" :class="'header-' + stage.key">
         <span class="column-icon">{{ stage.icon }}</span>
         <span class="column-title">{{ stage.label }}</span>
@@ -511,7 +610,10 @@
         <div v-else-if="recordsByStage[stage.key].length === 0 && searchQuery" class="empty">无匹配工程</div>
         <div v-else-if="recordsByStage[stage.key].length === 0" class="empty">暂无工程</div>
         <div v-for="r in recordsByStage[stage.key]" :key="r.id"
-             class="card" :class="'stage-' + r.stage"
+             class="card" :class="['stage-' + r.stage, { dragging: dragId === r.id }]"
+             draggable="true"
+             @dragstart="onDragStart($event, r)"
+             @dragend="onDragEnd"
              @click="openDetail(r)">
           <div class="card-header">
             <span class="card-projno" v-html="highlight(r.projNo || '(无编号)', searchQuery)"></span>
@@ -659,6 +761,28 @@
             <label class="form-label">备注</label>
             <textarea class="form-textarea" v-model="currentRecord.stages.order.remarks" rows="3"></textarea>
           </div>
+          <!-- B: 自定义栏目 -->
+          <div class="custom-fields">
+            <div class="custom-fields-title">📌 自定义字段</div>
+            <div v-for="(cf, idx) in currentRecord.stages.order.customFields" :key="'order-cf-' + idx" class="custom-field">
+              <label class="form-label">{{ cf.name }}</label>
+              <input v-if="cf.type === 'date'" type="date" class="form-input" v-model="cf.value">
+              <input v-else class="form-input" v-model="cf.value" :placeholder="cf.name">
+              <button class="btn-icon-sm" @click="removeCustomField('order', idx)" title="删除">×</button>
+            </div>
+            <div v-if="addingFieldFor === 'order'" class="custom-field-form">
+              <input class="form-input" v-model="newField.name" placeholder="字段名 (例：订单号)">
+              <select class="form-select" v-model="newField.type">
+                <option value="text">文本</option>
+                <option value="date">日期</option>
+              </select>
+              <input v-if="newField.type === 'date'" type="date" class="form-input" v-model="newField.value">
+              <input v-else class="form-input" v-model="newField.value" placeholder="默认值 (可选)">
+              <button class="btn btn-primary btn-sm" @click="addCustomField('order')">✓</button>
+              <button class="btn btn-secondary btn-sm" @click="cancelAddField">×</button>
+            </div>
+            <button v-else class="btn btn-secondary btn-sm" @click="startAddField('order')">+ 添加字段</button>
+          </div>
         </div>
 
         <!-- Tab: Container -->
@@ -676,6 +800,27 @@
           <div class="form-group">
             <label class="form-label">备注</label>
             <textarea class="form-textarea" v-model="currentRecord.stages.container.remarks" rows="3"></textarea>
+          </div>
+          <div class="custom-fields">
+            <div class="custom-fields-title">📌 自定义字段</div>
+            <div v-for="(cf, idx) in currentRecord.stages.container.customFields" :key="'container-cf-' + idx" class="custom-field">
+              <label class="form-label">{{ cf.name }}</label>
+              <input v-if="cf.type === 'date'" type="date" class="form-input" v-model="cf.value">
+              <input v-else class="form-input" v-model="cf.value" :placeholder="cf.name">
+              <button class="btn-icon-sm" @click="removeCustomField('container', idx)" title="删除">×</button>
+            </div>
+            <div v-if="addingFieldFor === 'container'" class="custom-field-form">
+              <input class="form-input" v-model="newField.name" placeholder="字段名 (例：柜号)">
+              <select class="form-select" v-model="newField.type">
+                <option value="text">文本</option>
+                <option value="date">日期</option>
+              </select>
+              <input v-if="newField.type === 'date'" type="date" class="form-input" v-model="newField.value">
+              <input v-else class="form-input" v-model="newField.value" placeholder="默认值 (可选)">
+              <button class="btn btn-primary btn-sm" @click="addCustomField('container')">✓</button>
+              <button class="btn btn-secondary btn-sm" @click="cancelAddField">×</button>
+            </div>
+            <button v-else class="btn btn-secondary btn-sm" @click="startAddField('container')">+ 添加字段</button>
           </div>
         </div>
 
@@ -695,6 +840,27 @@
             <label class="form-label">备注</label>
             <textarea class="form-textarea" v-model="currentRecord.stages.arrival.remarks" rows="3"></textarea>
           </div>
+          <div class="custom-fields">
+            <div class="custom-fields-title">📌 自定义字段</div>
+            <div v-for="(cf, idx) in currentRecord.stages.arrival.customFields" :key="'arrival-cf-' + idx" class="custom-field">
+              <label class="form-label">{{ cf.name }}</label>
+              <input v-if="cf.type === 'date'" type="date" class="form-input" v-model="cf.value">
+              <input v-else class="form-input" v-model="cf.value" :placeholder="cf.name">
+              <button class="btn-icon-sm" @click="removeCustomField('arrival', idx)" title="删除">×</button>
+            </div>
+            <div v-if="addingFieldFor === 'arrival'" class="custom-field-form">
+              <input class="form-input" v-model="newField.name" placeholder="字段名 (例：签收人)">
+              <select class="form-select" v-model="newField.type">
+                <option value="text">文本</option>
+                <option value="date">日期</option>
+              </select>
+              <input v-if="newField.type === 'date'" type="date" class="form-input" v-model="newField.value">
+              <input v-else class="form-input" v-model="newField.value" placeholder="默认值 (可选)">
+              <button class="btn btn-primary btn-sm" @click="addCustomField('arrival')">✓</button>
+              <button class="btn btn-secondary btn-sm" @click="cancelAddField">×</button>
+            </div>
+            <button v-else class="btn btn-secondary btn-sm" @click="startAddField('arrival')">+ 添加字段</button>
+          </div>
         </div>
 
         <!-- Tab: Install -->
@@ -712,6 +878,27 @@
           <div class="form-group">
             <label class="form-label">备注</label>
             <textarea class="form-textarea" v-model="currentRecord.stages.install.remarks" rows="3"></textarea>
+          </div>
+          <div class="custom-fields">
+            <div class="custom-fields-title">📌 自定义字段</div>
+            <div v-for="(cf, idx) in currentRecord.stages.install.customFields" :key="'install-cf-' + idx" class="custom-field">
+              <label class="form-label">{{ cf.name }}</label>
+              <input v-if="cf.type === 'date'" type="date" class="form-input" v-model="cf.value">
+              <input v-else class="form-input" v-model="cf.value" :placeholder="cf.name">
+              <button class="btn-icon-sm" @click="removeCustomField('install', idx)" title="删除">×</button>
+            </div>
+            <div v-if="addingFieldFor === 'install'" class="custom-field-form">
+              <input class="form-input" v-model="newField.name" placeholder="字段名 (例：保修期)">
+              <select class="form-select" v-model="newField.type">
+                <option value="text">文本</option>
+                <option value="date">日期</option>
+              </select>
+              <input v-if="newField.type === 'date'" type="date" class="form-input" v-model="newField.value">
+              <input v-else class="form-input" v-model="newField.value" placeholder="默认值 (可选)">
+              <button class="btn btn-primary btn-sm" @click="addCustomField('install')">✓</button>
+              <button class="btn btn-secondary btn-sm" @click="cancelAddField">×</button>
+            </div>
+            <button v-else class="btn btn-secondary btn-sm" @click="startAddField('install')">+ 添加字段</button>
           </div>
         </div>
 
@@ -742,6 +929,7 @@
       </div>
       <div class="modal-footer">
         <button class="btn btn-danger" @click="deleteCurrent">🗑 删除</button>
+        <button class="btn btn-secondary" @click="printCurrent">🖨 打印</button>
         <button class="btn btn-success" @click="autoProgress">🔄 自动推进</button>
         <button class="btn btn-primary" @click="saveCurrent">💾 保存</button>
         <!-- 📅 Calendar 同步按钮 v1.5 待 OAuth 修复后启用 -->
@@ -756,6 +944,7 @@
 </div>
 
 <script src="https://unpkg.com/vue@3.4.27/dist/vue.global.prod.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 <script>
 const { createApp, ref, computed, reactive, onMounted } = Vue;
 
@@ -792,6 +981,9 @@ createApp({
     const toast = reactive({ show: false, text: '', type: 'success' });
     const stages = STAGES;
     const searchQuery = ref('');
+    const dragId = ref(null);
+    const addingFieldFor = ref(null);
+    const newField = reactive({ name: '', type: 'text', value: '' });
 
     // 过滤后的记录（按 searchQuery 模糊匹配 5 个核心字段）
     const filteredRecords = computed(() => {
@@ -807,6 +999,33 @@ createApp({
       const c = { order: 0, container: 0, arrival: 0, install: 0 };
       filteredRecords.value.forEach(r => { if (c[r.stage] !== undefined) c[r.stage]++; });
       return c;
+    });
+
+    // 关键日期统计 (D)
+    const keyStats = computed(() => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const weekFromNow = new Date(today);
+      weekFromNow.setDate(weekFromNow.getDate() + 7);
+      let todayContainer = 0, weekInstall = 0, overdue = 0;
+      filteredRecords.value.forEach(r => {
+        if (r.stages.container && r.stages.container.date) {
+          const d = new Date(r.stages.container.date + 'T00:00:00');
+          if (!isNaN(d.getTime()) && d.getTime() === today.getTime()) todayContainer++;
+        }
+        if (r.stages.install && r.stages.install.date) {
+          const d = new Date(r.stages.install.date + 'T00:00:00');
+          if (!isNaN(d.getTime()) && d >= today && d < weekFromNow) weekInstall++;
+        }
+        if (r.stage !== 'install' && r.stages[r.stage] && r.stages[r.stage].date) {
+          const d = new Date(r.stages[r.stage].date + 'T00:00:00');
+          if (!isNaN(d.getTime())) {
+            const daysAgo = (today - d) / 86400000;
+            if (daysAgo > 14) overdue++;
+          }
+        }
+      });
+      return { todayContainer, weekInstall, overdue };
     });
 
     const recordsByStage = computed(() => {
@@ -1052,14 +1271,202 @@ createApp({
       return safe.replace(regex, '<mark>$1</mark>');
     }
 
+    // ===== Drag & Drop (C) =====
+    function onDragStart(e, r) {
+      dragId.value = r.id;
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', r.id); } catch (err) {}
+    }
+    function onDragEnd() {
+      dragId.value = null;
+      // 清除所有 column 的 drag-over class
+      document.querySelectorAll('.column.drag-over').forEach(el => el.classList.remove('drag-over'));
+    }
+    function onDragOver(e) {
+      e.dataTransfer.dropEffect = 'move';
+      // 高亮当前 column
+      const col = e.currentTarget;
+      if (col && !col.classList.contains('drag-over')) {
+        document.querySelectorAll('.column.drag-over').forEach(el => el.classList.remove('drag-over'));
+        col.classList.add('drag-over');
+      }
+    }
+    function onDragLeave(e) {
+      const col = e.currentTarget;
+      // 防止子元素触发的 leave
+      if (e.relatedTarget && col.contains(e.relatedTarget)) return;
+      if (col) col.classList.remove('drag-over');
+    }
+    async function onDrop(e, newStage) {
+      e.preventDefault();
+      const col = e.currentTarget;
+      if (col) col.classList.remove('drag-over');
+      const id = dragId.value || e.dataTransfer.getData('text/plain');
+      dragId.value = null;
+      if (!id) return;
+      const rec = records.value.find(r => r.id === id);
+      if (!rec || rec.stage === newStage) return;
+      const oldStage = rec.stage;
+      rec.stage = newStage;
+      // 保存
+      const updates = JSON.stringify({ stage: newStage });
+      const result = await callGAS({ action: 'updateRecord', id: id, updates });
+      if (result.success) {
+        const stageLabel = stages.find(s => s.key === newStage).label;
+        showToast(`✓ 已移到「${stageLabel}」`, 'success', 2000);
+        await loadRecords();
+      } else {
+        rec.stage = oldStage;
+        showToast('移动失败: ' + (result.error || '未知'), 'error');
+      }
+    }
+
+    // ===== Excel 导出 (E) =====
+    function exportExcel() {
+      if (records.value.length === 0) {
+        showToast('没有记录可导出', 'warn');
+        return;
+      }
+      const rows = records.value.map(r => {
+        const s = r.stages || {};
+        return {
+          '工程编号': r.projNo || '',
+          '当前阶段': stages.find(st => st.key === r.stage).label,
+          '业务员': r.salesperson || '',
+          '业务员电话': r.salespersonPhone || '',
+          '客户电话': r.customerPhone || '',
+          '客户地址': r.customerAddress || '',
+          '下单日期': (s.order && s.order.date) || '',
+          '下单工厂': (s.order && s.order.factory) || '',
+          '下单备注': (s.order && s.order.remarks) || '',
+          '装柜日期': (s.container && s.container.date) || '',
+          '装柜公司': (s.container && s.container.company) || '',
+          '装柜备注': (s.container && s.container.remarks) || '',
+          '抵达日期': (s.arrival && s.arrival.date) || '',
+          '抵达地点': (s.arrival && s.arrival.location) || '',
+          '抵达备注': (s.arrival && s.arrival.remarks) || '',
+          '安装日期': (s.install && s.install.date) || '',
+          '安装人员': (s.install && s.install.installer) || '',
+          '安装备注': (s.install && s.install.remarks) || '',
+          '创建时间': r.createdAt || '',
+          '更新时间': r.updatedAt || ''
+        };
+      });
+      try {
+        const ws = XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, '工程记录');
+        const stamp = new Date().toISOString().slice(0, 10);
+        XLSX.writeFile(wb, 'squirrelinstall_' + stamp + '.xlsx');
+        showToast('✓ 已导出 ' + rows.length + ' 条', 'success');
+      } catch (err) {
+        showToast('导出失败: ' + err.message, 'error');
+      }
+    }
+
+    // ===== 自定义栏目 (B) =====
+    function startAddField(stageKey) {
+      // 确保该 stage 有 customFields 数组
+      if (!currentRecord.value.stages[stageKey].customFields) {
+        currentRecord.value.stages[stageKey].customFields = [];
+      }
+      addingFieldFor.value = stageKey;
+      newField.name = '';
+      newField.type = 'text';
+      newField.value = '';
+    }
+    function cancelAddField() {
+      addingFieldFor.value = null;
+    }
+    function addCustomField(stageKey) {
+      const name = (newField.name || '').trim();
+      if (!name) {
+        showToast('请输入字段名', 'warn');
+        return;
+      }
+      const cf = { name: name, type: newField.type, value: newField.value || '' };
+      if (!currentRecord.value.stages[stageKey].customFields) {
+        currentRecord.value.stages[stageKey].customFields = [];
+      }
+      currentRecord.value.stages[stageKey].customFields.push(cf);
+      addingFieldFor.value = null;
+      newField.name = '';
+      newField.value = '';
+    }
+    function removeCustomField(stageKey, idx) {
+      if (!confirm('删除自定义字段？')) return;
+      currentRecord.value.stages[stageKey].customFields.splice(idx, 1);
+    }
+
+    // ===== 单条打印 (F) =====
+    function printCurrent() {
+      const r = currentRecord.value;
+      if (!r) return;
+      const w = window.open('', '_blank');
+      const s = r.stages || {};
+      const stageLabel = stages.find(st => st.key === r.stage).label;
+      const html = `
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>${escapeHtml(r.projNo || '')} - 安装单</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 30px; color: #050505; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: #65676b; font-size: 13px; margin-bottom: 20px; }
+  .section { border: 1px solid #e4e6eb; border-radius: 6px; padding: 14px; margin-bottom: 14px; }
+  .section-title { font-size: 13px; font-weight: 700; color: #65676b; margin-bottom: 8px; }
+  .row { display: flex; padding: 4px 0; font-size: 14px; }
+  .row .label { width: 100px; color: #65676b; flex-shrink: 0; }
+  .row .value { flex: 1; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th, td { border: 1px solid #e4e6eb; padding: 8px; text-align: left; font-size: 13px; }
+  th { background: #f7f8fa; font-weight: 600; }
+  @media print { body { padding: 0; } }
+</style>
+</head><body>
+<div class="print-area">
+  <h1>📋 ${escapeHtml(r.projNo || '(无编号)')}</h1>
+  <div class="sub">当前阶段: ${stageLabel} · 业务员: ${escapeHtml(r.salesperson || '—')}</div>
+
+  <div class="section">
+    <div class="section-title">👤 客户信息</div>
+    <div class="row"><div class="label">客户电话</div><div class="value">${escapeHtml(r.customerPhone || '—')}</div></div>
+    <div class="row"><div class="label">客户地址</div><div class="value">${escapeHtml(r.customerAddress || '—')}</div></div>
+    <div class="row"><div class="label">业务员</div><div class="value">${escapeHtml(r.salesperson || '—')} (${escapeHtml(r.salespersonPhone || '—')})</div></div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">📅 4 阶段时间表</div>
+    <table>
+      <tr><th>阶段</th><th>日期</th><th>详情</th><th>备注</th></tr>
+      <tr><td>🛒 下单</td><td>${escapeHtml((s.order && s.order.date) || '—')}</td><td>${escapeHtml((s.order && s.order.factory) || '—')}</td><td>${escapeHtml((s.order && s.order.remarks) || '—')}</td></tr>
+      <tr><td>📦 装柜</td><td>${escapeHtml((s.container && s.container.date) || '—')}</td><td>${escapeHtml((s.container && s.container.company) || '—')}</td><td>${escapeHtml((s.container && s.container.remarks) || '—')}</td></tr>
+      <tr><td>🚚 抵达</td><td>${escapeHtml((s.arrival && s.arrival.date) || '—')}</td><td>${escapeHtml((s.arrival && s.arrival.location) || '—')}</td><td>${escapeHtml((s.arrival && s.arrival.remarks) || '—')}</td></tr>
+      <tr><td>🔨 安装</td><td>${escapeHtml((s.install && s.install.date) || '—')}</td><td>${escapeHtml((s.install && s.install.installer) || '—')}</td><td>${escapeHtml((s.install && s.install.remarks) || '—')}</td></tr>
+    </table>
+  </div>
+
+  <div style="margin-top: 30px; text-align: center; color: #65676b; font-size: 11px;">
+    Squirrel Install · 打印于 ${new Date().toLocaleString('zh-CN')}
+  </div>
+</div>
+</body></html>`;
+      w.document.write(html);
+      w.document.close();
+      setTimeout(() => { w.print(); }, 300);
+    }
+
     onMounted(() => loadRecords());
 
     return {
       records, loading, modal, addForm, importPreview,
-      currentRecord, activeTab, toast, stages, counts, recordsByStage,
-      searchQuery, filteredRecords,
+      currentRecord, activeTab, toast, stages, counts, recordsByStage, keyStats,
+      searchQuery, filteredRecords, dragId,
+      addingFieldFor, newField,
       showAdd, showImport, openDetail, closeDetail,
       submitAdd, submitImport, saveCurrent, deleteCurrent, autoProgress, manualSyncCalendar,
+      printCurrent, exportExcel,
+      startAddField, cancelAddField, addCustomField, removeCustomField,
+      onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop,
       loadRecords, isOverdue, truncate, formatDate, highlight
     };
   }
