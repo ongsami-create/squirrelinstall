@@ -2,4 +2,5 @@
 .DS_Store
 *.log
 index_backup_*.html
+Code_backup_*.gs
 sample_data.json
