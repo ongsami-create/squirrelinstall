@@ -664,14 +664,14 @@
 
         <div style="font-size: 12px; color: var(--subtext); padding: 8px 0;">
           创建: {{ formatDate(currentRecord.createdAt) }} · 更新: {{ formatDate(currentRecord.updatedAt) }}
-          <span v-if="currentRecord.lastSyncedAt"> · 📅 同步: {{ formatDate(currentRecord.lastSyncedAt) }}</span>
         </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-danger" @click="deleteCurrent">🗑 删除</button>
-        <button class="btn btn-secondary" @click="manualSyncCalendar">📅 同步 Calendar</button>
         <button class="btn btn-success" @click="autoProgress">🔄 自动推进</button>
         <button class="btn btn-primary" @click="saveCurrent">💾 保存</button>
+        <!-- 📅 Calendar 同步按钮 v1.5 待 OAuth 修复后启用 -->
+        <!-- <button class="btn btn-secondary" @click="manualSyncCalendar">📅 同步 Calendar</button> -->
       </div>
     </div>
   </div>
@@ -875,19 +875,6 @@ createApp({
       const result = await callGAS({ action: 'updateRecord', id: r.id, updates });
       if (result.success) {
         showToast('✓ 已保存');
-        // Show Calendar sync result
-        const cs = result.calendarSync;
-        if (cs) {
-          if (cs.success) {
-            const msg = cs.action === 'created' ? 'Calendar 已创建' :
-                        cs.action === 'updated' ? 'Calendar 已更新' :
-                        cs.action === 'deleted' ? 'Calendar event 已删除' :
-                        'Calendar 无变化';
-            showToast('📅 ' + msg, 'success', 3500);
-          } else {
-            showToast('📅 Calendar 同步失败: ' + (cs.error || '未知'), 'error', 4000);
-          }
-        }
         // Update local record with the synced data
         if (result.record) {
           currentRecord.value = JSON.parse(JSON.stringify(result.record));
