@@ -940,10 +940,9 @@
       <div class="modal-footer">
         <button class="btn btn-danger" @click="deleteCurrent">🗑 删除</button>
         <button class="btn btn-secondary" @click="printCurrent">🖨 打印</button>
+        <button class="btn btn-secondary" @click="manualSyncCalendar">📅 同步 Calendar</button>
         <button class="btn btn-success" @click="autoProgress">🔄 自动推进</button>
         <button class="btn btn-primary" @click="saveCurrent">💾 保存</button>
-        <!-- 📅 Calendar 同步按钮 v1.5 待 OAuth 修复后启用 -->
-        <!-- <button class="btn btn-secondary" @click="manualSyncCalendar">📅 同步 Calendar</button> -->
       </div>
     </div>
   </div>
@@ -958,7 +957,7 @@
 <script>
 const { createApp, ref, computed, reactive, onMounted } = Vue;
 
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbxXdUu2Svtx3n2VsXHz76FYjFrHBa7hwxR4Kbmhvp_KEQ4A34p1Ck7NnZjGkyH24jlN/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbxoeaapZh_hzzbBLTgFTj765tZcxZ9upgk_fLou1xtpIk7WnC6RR2CSfsmx1hVbvKA9/exec';
 
 const STAGES = [
   { key: 'order', label: '下单', icon: '🛒' },
@@ -1210,6 +1209,19 @@ createApp({
       const result = await callGAS({ action: 'updateRecord', id: r.id, updates });
       if (result.success) {
         showToast('✓ 已保存');
+        // 显示 Calendar 同步结果 (auto-sync 在 updateRecord 里调用)
+        const cs = result.calendarSync;
+        if (cs) {
+          if (cs.success) {
+            const msg = cs.action === 'created' ? 'Calendar 已创建' :
+                        cs.action === 'updated' ? 'Calendar 已更新' :
+                        cs.action === 'deleted' ? 'Calendar event 已删除' :
+                        'Calendar 无变化';
+            showToast('📅 ' + msg, 'success', 3500);
+          } else if (cs.error) {
+            showToast('📅 Calendar 同步失败: ' + cs.error, 'error', 4000);
+          }
+        }
         // Update local record with the synced data
         if (result.record) {
           currentRecord.value = JSON.parse(JSON.stringify(result.record));

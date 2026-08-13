@@ -19,7 +19,7 @@
 // ===== 配置 =====
 const RECORDS_FOLDER_NAME = 'SquirrelInstall_Records';
 const CALENDAR_ID = 'squirreldesigner9068@gmail.com';
-const VERSION = 'v1.7';
+const VERSION = 'v1.8';
 
 // ===== 入口 =====
 function doGet(e) { return handleRequest(e); }
@@ -294,12 +294,12 @@ function addManualRecord(params) {
   }
   const file = folder.createFile(id + '.json', JSON.stringify(record, null, 2), MimeType.PLAIN_TEXT);
 
-  // Calendar 同步已禁用 (v1.5 待修 OAuth 后启用)
-  // let calendarSync = null;
-  // try { calendarSync = syncToCalendar(id); }
-  // catch (e) { calendarSync = { success: false, error: e.message }; }
+  // v1.7: 自动同步 Calendar (best effort，不阻塞保存)
+  let calendarSync = null;
+  try { calendarSync = syncToCalendar(id); }
+  catch (e) { calendarSync = { success: false, error: e.message }; }
 
-  return { success: true, record: record };
+  return { success: true, record: record, calendarSync: calendarSync };
 }
 
 // 批量导入
@@ -344,7 +344,17 @@ function importRecords(params) {
       folder.createFile(id + '.json', JSON.stringify(record, null, 2), MimeType.PLAIN_TEXT);
       results.success++;
 
-      // Calendar 同步已禁用 (v1.5 待修 OAuth 后启用)
+      // v1.7: 自动同步 Calendar (best effort)
+      try {
+        const sync = syncToCalendar(id);
+        if (sync.success && (sync.action === 'created' || sync.action === 'updated')) {
+          results.calendarSynced = (results.calendarSynced || 0) + 1;
+        } else {
+          results.calendarFailed = (results.calendarFailed || 0) + 1;
+        }
+      } catch (e) {
+        results.calendarFailed = (results.calendarFailed || 0) + 1;
+      }
       // try {
       //   const sync = syncToCalendar(id);
       //   if (sync.success && (sync.action === 'created' || sync.action === 'updated')) {
@@ -413,12 +423,12 @@ function updateRecord(params) {
 
   saveRecordToFile(file, merged);
 
-  // Calendar 同步已禁用 (v1.5 待修 OAuth 后启用)
-  // let calendarSync = null;
-  // try { calendarSync = syncToCalendar(id); }
-  // catch (e) { calendarSync = { success: false, error: e.message }; }
+  // v1.7: 自动同步 Calendar (best effort)
+  let calendarSync = null;
+  try { calendarSync = syncToCalendar(id); }
+  catch (e) { calendarSync = { success: false, error: e.message }; }
 
-  return { success: true, record: merged };
+  return { success: true, record: merged, calendarSync: calendarSync };
 }
 
 // 删除（移到回收站 + 删 Calendar event）
