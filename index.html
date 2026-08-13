@@ -83,6 +83,70 @@
   }
   .btn-icon:hover { background: #f0f2f5; }
 
+  /* ===== Search ===== */
+  .search-box {
+    position: relative;
+    flex: 1;
+    max-width: 380px;
+    margin: 0 12px;
+  }
+  .search-input {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 7px 32px 7px 36px;
+    font-size: 13px;
+    background: #f0f2f5;
+    font-family: inherit;
+  }
+  .search-input:focus {
+    outline: none;
+    background: white;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(24,119,242,0.15);
+  }
+  .search-icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--subtext);
+    font-size: 14px;
+    pointer-events: none;
+  }
+  .search-clear {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: transparent;
+    border: none;
+    color: var(--subtext);
+    font-size: 18px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    cursor: pointer;
+    line-height: 1;
+  }
+  .search-clear:hover { background: #e4e6eb; color: var(--text); }
+  .card mark, .card-row mark {
+    background: #fff3a0;
+    color: var(--text);
+    padding: 0 2px;
+    border-radius: 2px;
+    font-weight: 600;
+  }
+  .empty-hint {
+    background: #fff7e6;
+    color: #ad6800;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    margin: 0 8px 8px;
+    text-align: center;
+  }
+
   /* ===== Dashboard ===== */
   .dashboard {
     display: grid;
@@ -371,6 +435,7 @@
     .form-row { grid-template-columns: 1fr; }
     .topbar { flex-direction: column; gap: 10px; align-items: stretch; }
     .actions { justify-content: center; flex-wrap: wrap; }
+    .search-box { max-width: 100%; margin: 0; }
   }
 </style>
 </head>
@@ -385,6 +450,14 @@
         <h1>Squirrel Install</h1>
         <div class="sub">下单到安装追踪系统</div>
       </div>
+    </div>
+    <div class="search-box">
+      <span class="search-icon">🔍</span>
+      <input class="search-input"
+             v-model="searchQuery"
+             @keydown.esc="searchQuery = ''"
+             placeholder="搜索 工程编号 / 客户电话 / 业务员 / 地址...">
+      <button v-if="searchQuery" class="search-clear" @click="searchQuery = ''" title="清空">×</button>
     </div>
     <div class="actions">
       <button class="btn btn-secondary" @click="showImport">📥 导入 JSON</button>
@@ -435,16 +508,17 @@
       </div>
       <div class="column-body">
         <div v-if="loading" class="loading"><div class="spinner"></div></div>
+        <div v-else-if="recordsByStage[stage.key].length === 0 && searchQuery" class="empty">无匹配工程</div>
         <div v-else-if="recordsByStage[stage.key].length === 0" class="empty">暂无工程</div>
         <div v-for="r in recordsByStage[stage.key]" :key="r.id"
              class="card" :class="'stage-' + r.stage"
              @click="openDetail(r)">
           <div class="card-header">
-            <span class="card-projno">{{ r.projNo || '(无编号)' }}</span>
-            <span class="card-salesperson">{{ r.salesperson || '—' }}</span>
+            <span class="card-projno" v-html="highlight(r.projNo || '(无编号)', searchQuery)"></span>
+            <span class="card-salesperson" v-html="highlight(r.salesperson || '—', searchQuery)"></span>
           </div>
-          <div class="card-row">📞 {{ r.customerPhone || '—' }}</div>
-          <div class="card-row">📍 {{ truncate(r.customerAddress, 36) || '—' }}</div>
+          <div class="card-row" v-html="'📞 ' + highlight(r.customerPhone || '—', searchQuery)"></div>
+          <div class="card-row" v-html="'📍 ' + highlight(truncate(r.customerAddress, 36) || '—', searchQuery)"></div>
           <div class="card-timeline">
             <div v-for="s in stages" :key="s.key"
                  class="timeline-dot"
@@ -717,16 +791,27 @@ createApp({
     const activeTab = ref('order');
     const toast = reactive({ show: false, text: '', type: 'success' });
     const stages = STAGES;
+    const searchQuery = ref('');
+
+    // 过滤后的记录（按 searchQuery 模糊匹配 5 个核心字段）
+    const filteredRecords = computed(() => {
+      const q = searchQuery.value.trim().toLowerCase();
+      if (!q) return records.value;
+      return records.value.filter(r => {
+        const fields = [r.projNo, r.customerPhone, r.customerAddress, r.salesperson, r.salespersonPhone];
+        return fields.some(f => f && String(f).toLowerCase().includes(q));
+      });
+    });
 
     const counts = computed(() => {
       const c = { order: 0, container: 0, arrival: 0, install: 0 };
-      records.value.forEach(r => { if (c[r.stage] !== undefined) c[r.stage]++; });
+      filteredRecords.value.forEach(r => { if (c[r.stage] !== undefined) c[r.stage]++; });
       return c;
     });
 
     const recordsByStage = computed(() => {
       const g = { order: [], container: [], arrival: [], install: [] };
-      records.value.forEach(r => { if (g[r.stage]) g[r.stage].push(r); });
+      filteredRecords.value.forEach(r => { if (g[r.stage]) g[r.stage].push(r); });
       // Sort: items with earlier next-milestone date first
       Object.keys(g).forEach(k => {
         g[k].sort((a, b) => (a.updatedAt || '').localeCompare(b.updatedAt || ''));
@@ -949,14 +1034,33 @@ createApp({
       try { return new Date(s).toLocaleString('zh-CN'); } catch (e) { return s; }
     }
 
+    function escapeHtml(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function highlight(text, query) {
+      const safe = escapeHtml(text || '');
+      const q = (query || '').trim();
+      if (!q) return safe;
+      const safeQ = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp('(' + safeQ + ')', 'gi');
+      return safe.replace(regex, '<mark>$1</mark>');
+    }
+
     onMounted(() => loadRecords());
 
     return {
       records, loading, modal, addForm, importPreview,
       currentRecord, activeTab, toast, stages, counts, recordsByStage,
+      searchQuery, filteredRecords,
       showAdd, showImport, openDetail, closeDetail,
       submitAdd, submitImport, saveCurrent, deleteCurrent, autoProgress, manualSyncCalendar,
-      loadRecords, isOverdue, truncate, formatDate
+      loadRecords, isOverdue, truncate, formatDate, highlight
     };
   }
 }).mount('#app');
