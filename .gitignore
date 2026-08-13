@@ -2,3 +2,4 @@
 .DS_Store
 *.log
 index_backup_*.html
+sample_data.json
