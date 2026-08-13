@@ -67,13 +67,14 @@
 
 | Action | 用途 |
 |---|---|
-| `addManualRecord` | 手动补单，存 1 条 JSON |
-| `importRecords`   | 批量导入（JSON 上传） |
+| `addManualRecord` | 手动补单，存 1 条 JSON，**自动同步 Calendar** |
+| `importRecords`   | 批量导入（JSON 上传），**逐条自动同步 Calendar** |
 | `getAllRecords`   | 拉所有记录 |
-| `getRecord`       | 单条详情（当前未用，前端缓存即可） |
-| `updateRecord`    | 局部更新（合并 + sanitize） |
-| `deleteRecord`    | 移到回收站（不真删） |
-| `health`          | 健康检查 |
+| `getRecord`       | 单条详情 |
+| `updateRecord`    | 局部更新（合并 + sanitize），**自动同步 Calendar** |
+| `deleteRecord`    | 移到回收站 + **删除 Calendar event** |
+| `syncToCalendar`  | 手动同步单条到 Calendar（fallback） |
+| `health`          | 健康检查，返回 version |
 
 ## 颜色规范（4 阶段）
 
@@ -85,12 +86,38 @@
 ## 实施路线
 
 - [x] v1.0 (2026-08-13): 框架 + 手动补单 + JSON 导入 + Kanban UI + 详情编辑
+- [x] v1.4 (2026-08-13): Google Calendar 同步（每工程 1 个 all-day event）
 - [ ] v1.1: 自定义栏目增删（文本 + 日期）
-- [ ] v1.2: 自动阶段推进 + 拖拽换阶段
+- [ ] v1.2: 拖拽换阶段
 - [ ] v1.3: Dashboard 强化（今日装柜/本周安装/逾期）
-- [ ] v1.4: Google Calendar 双向同步
 - [ ] v1.5: Excel 导出
 - [ ] v1.6: 全局搜索 + 单条打印
+
+## Calendar 同步机制
+
+- **每个工程 = 1 个 all-day event**
+- **标题**: `[projNo] 客户地址 - 业务员`（超 250 字符截断）
+- **时间**: 覆盖 4 阶段日期 min → max（没填日期就不创建 event）
+- **颜色**: 按当前阶段染色
+  - order (下单)     → BLUE (9)
+  - container (装柜) → ORANGE (6)
+  - arrival (抵达)   → GREEN (10)
+  - install (安装)   → MAUVE (3)
+- **描述**: 工程信息 + 4 阶段时间表 + 备注 + 系统元信息
+- **触发**:
+  - 自动：`addManualRecord` / `importRecords` / `updateRecord` 内部都调 `syncToCalendar`
+  - 手动：详情页点 "📅 同步 Calendar" 按钮
+  - 删除：删记录自动删 event
+- **Calendar ID**: `squirreldesigner9068@gmail.com` (公司主日历)
+- **存储**: 记录里加 `calendarEventId` 字段追踪 event，重保存时更新而非重建
+
+## 部署 v1.4 时额外步骤
+
+由于 v1.4 新增 Calendar 权限：
+1. 部署时 GAS 会弹授权窗口，**必须勾选「Google 日历」权限**并允许
+2. 部署后等 10-20 秒缓存刷新
+3. 在 Calendar 网页版检查是否出现新 event
+4. 如果 Calendar 同步失败：GAS 编辑器 → 执行 `trySyncToCalendar('<record-id>')` 看错误
 
 ## 部署流程
 

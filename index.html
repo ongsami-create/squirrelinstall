@@ -664,11 +664,13 @@
 
         <div style="font-size: 12px; color: var(--subtext); padding: 8px 0;">
           创建: {{ formatDate(currentRecord.createdAt) }} · 更新: {{ formatDate(currentRecord.updatedAt) }}
+          <span v-if="currentRecord.lastSyncedAt"> · 📅 同步: {{ formatDate(currentRecord.lastSyncedAt) }}</span>
         </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-danger" @click="deleteCurrent">🗑 删除</button>
-        <button class="btn btn-success" @click="autoProgress">🔄 自动推进阶段</button>
+        <button class="btn btn-secondary" @click="manualSyncCalendar">📅 同步 Calendar</button>
+        <button class="btn btn-success" @click="autoProgress">🔄 自动推进</button>
         <button class="btn btn-primary" @click="saveCurrent">💾 保存</button>
       </div>
     </div>
@@ -873,10 +875,49 @@ createApp({
       const result = await callGAS({ action: 'updateRecord', id: r.id, updates });
       if (result.success) {
         showToast('✓ 已保存');
+        // Show Calendar sync result
+        const cs = result.calendarSync;
+        if (cs) {
+          if (cs.success) {
+            const msg = cs.action === 'created' ? 'Calendar 已创建' :
+                        cs.action === 'updated' ? 'Calendar 已更新' :
+                        cs.action === 'deleted' ? 'Calendar event 已删除' :
+                        'Calendar 无变化';
+            showToast('📅 ' + msg, 'success', 3500);
+          } else {
+            showToast('📅 Calendar 同步失败: ' + (cs.error || '未知'), 'error', 4000);
+          }
+        }
+        // Update local record with the synced data
+        if (result.record) {
+          currentRecord.value = JSON.parse(JSON.stringify(result.record));
+        }
         modal.detail = false;
         await loadRecords();
       } else {
         showToast('保存失败: ' + (result.error || '未知错误'), 'error');
+      }
+    }
+
+    async function manualSyncCalendar() {
+      const r = currentRecord.value;
+      if (!r) return;
+      showToast('📅 同步中...', 'success', 1500);
+      const result = await callGAS({ action: 'syncToCalendar', id: r.id });
+      if (result.success) {
+        const msg = result.action === 'created' ? '已创建' :
+                    result.action === 'updated' ? '已更新' :
+                    result.action === 'deleted' ? '已删除' :
+                    result.action === 'none' ? '无变化 (没填日期)' :
+                    '完成';
+        showToast('📅 Calendar ' + msg, 'success', 3000);
+        // Reload to get updated lastSyncedAt
+        const fresh = await callGAS({ action: 'getRecord', id: r.id });
+        if (fresh.success && fresh.record) {
+          currentRecord.value = JSON.parse(JSON.stringify(fresh.record));
+        }
+      } else {
+        showToast('📅 同步失败: ' + (result.error || '未知错误'), 'error', 4000);
       }
     }
 
@@ -927,7 +968,7 @@ createApp({
       records, loading, modal, addForm, importPreview,
       currentRecord, activeTab, toast, stages, counts, recordsByStage,
       showAdd, showImport, openDetail, closeDetail,
-      submitAdd, submitImport, saveCurrent, deleteCurrent, autoProgress,
+      submitAdd, submitImport, saveCurrent, deleteCurrent, autoProgress, manualSyncCalendar,
       loadRecords, isOverdue, truncate, formatDate
     };
   }
