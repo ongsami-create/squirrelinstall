@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Squirrel Install - 下单到安装追踪系统</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f0f2f5;
+    --card: #ffffff;
+    --text: #050505;
+    --subtext: #65676b;
+    --border: #e4e6eb;
+    --primary: #1877f2;
+    --primary-hover: #166fe5;
+    --success: #42b72a;
+    --danger: #e41e3f;
+    --warning: #f7b928;
+    --order: #2196f3;
+    --container: #ff9800;
+    --arrival: #4caf50;
+    --install: #9c27b0;
+    --shadow: 0 1px 2px rgba(0,0,0,0.1);
+    --shadow-lg: 0 4px 12px rgba(0,0,0,0.15);
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  /* ===== Topbar ===== */
+  .topbar {
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: var(--shadow);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .logo { font-size: 24px; }
+  .brand h1 { font-size: 18px; font-weight: 700; }
+  .brand .sub { color: var(--subtext); font-size: 12px; }
+  .actions { display: flex; gap: 8px; align-items: center; }
+  .btn {
+    border: none;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-primary { background: var(--primary); color: white; }
+  .btn-primary:hover { background: var(--primary-hover); }
+  .btn-secondary { background: #e4e6eb; color: var(--text); }
+  .btn-secondary:hover { background: #d8dadf; }
+  .btn-danger { background: var(--danger); color: white; }
+  .btn-danger:hover { background: #c61a35; }
+  .btn-success { background: var(--success); color: white; }
+  .btn-success:hover { background: #36a420; }
+  .btn-icon {
+    background: transparent;
+    border: 1px solid var(--border);
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    cursor: pointer;
+  }
+  .btn-icon:hover { background: #f0f2f5; }
+
+  /* ===== Dashboard ===== */
+  .dashboard {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    padding: 16px 24px;
+  }
+  .stat-card {
+    background: var(--card);
+    border-radius: 8px;
+    padding: 14px 16px;
+    box-shadow: var(--shadow);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-left: 4px solid;
+  }
+  .stat-card.order { border-left-color: var(--order); }
+  .stat-card.container { border-left-color: var(--container); }
+  .stat-card.arrival { border-left-color: var(--arrival); }
+  .stat-card.install { border-left-color: var(--install); }
+  .stat-icon { font-size: 28px; }
+  .stat-value { font-size: 24px; font-weight: 700; }
+  .stat-label { font-size: 12px; color: var(--subtext); }
+
+  /* ===== Kanban ===== */
+  .kanban {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    padding: 0 24px 24px;
+    min-height: calc(100vh - 220px);
+  }
+  .column {
+    background: #e9ebee;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    min-height: 400px;
+  }
+  .column-header {
+    padding: 12px 14px;
+    border-radius: 8px 8px 0 0;
+    color: white;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+  }
+  .column-header.header-order { background: var(--order); }
+  .column-header.header-container { background: var(--container); }
+  .column-header.header-arrival { background: var(--arrival); }
+  .column-header.header-install { background: var(--install); }
+  .column-icon { font-size: 18px; }
+  .column-title { flex: 1; }
+  .column-count {
+    background: rgba(255,255,255,0.3);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 12px;
+  }
+  .column-body {
+    padding: 8px;
+    flex: 1;
+    overflow-y: auto;
+    max-height: calc(100vh - 280px);
+  }
+  .empty {
+    text-align: center;
+    color: var(--subtext);
+    padding: 30px 10px;
+    font-size: 13px;
+  }
+
+  /* ===== Card ===== */
+  .card {
+    background: var(--card);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 8px;
+    box-shadow: var(--shadow);
+    cursor: pointer;
+    transition: all 0.15s;
+    border-left: 3px solid transparent;
+  }
+  .card:hover {
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-1px);
+  }
+  .card.stage-order { border-left-color: var(--order); }
+  .card.stage-container { border-left-color: var(--container); }
+  .card.stage-arrival { border-left-color: var(--arrival); }
+  .card.stage-install { border-left-color: var(--install); }
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .card-projno { font-weight: 700; font-size: 14px; }
+  .card-salesperson {
+    background: #e4e6eb;
+    color: var(--text);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .card-row {
+    font-size: 12px;
+    color: var(--subtext);
+    margin-bottom: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .card-timeline {
+    display: flex;
+    gap: 4px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .timeline-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #e4e6eb;
+    flex: 1;
+    min-width: 0;
+  }
+  .timeline-dot.active { background: var(--success); }
+  .card-overdue {
+    color: var(--danger);
+    font-size: 11px;
+    font-weight: 600;
+    margin-top: 4px;
+  }
+
+  /* ===== Modal ===== */
+  .modal-mask {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+  }
+  .modal {
+    background: var(--card);
+    border-radius: 12px;
+    max-width: 600px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: var(--shadow-lg);
+  }
+  .modal-lg { max-width: 800px; }
+  .modal-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .modal-title { font-size: 18px; font-weight: 700; }
+  .modal-close {
+    background: transparent;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: var(--subtext);
+    width: 32px; height: 32px;
+    border-radius: 50%;
+  }
+  .modal-close:hover { background: #f0f2f5; }
+  .modal-body { padding: 20px; }
+  .modal-footer {
+    padding: 12px 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  /* ===== Form ===== */
+  .form-group { margin-bottom: 14px; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .form-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--subtext);
+    margin-bottom: 4px;
+  }
+  .form-input, .form-select, .form-textarea {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 14px;
+    font-family: inherit;
+    background: var(--card);
+  }
+  .form-input:focus, .form-select:focus, .form-textarea:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(24,119,242,0.2);
+  }
+  .form-textarea { resize: vertical; min-height: 60px; }
+  .form-section {
+    background: #f7f8fa;
+    border-radius: 8px;
+    padding: 14px;
+    margin-bottom: 14px;
+  }
+  .form-section-title {
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* ===== Detail Tabs ===== */
+  .tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    margin: -20px -20px 16px;
+    padding: 0 20px;
+    overflow-x: auto;
+  }
+  .tab {
+    padding: 10px 16px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--subtext);
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+  }
+  .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* ===== Toast ===== */
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--text);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 6px;
+    box-shadow: var(--shadow-lg);
+    z-index: 2000;
+    font-size: 14px;
+    font-weight: 500;
+    animation: slideUp 0.2s ease;
+  }
+  .toast.success { background: var(--success); }
+  .toast.error { background: var(--danger); }
+  .toast.warn { background: var(--warning); color: var(--text); }
+  @keyframes slideUp { from { opacity: 0; transform: translate(-50%, 20px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+  /* ===== Loading ===== */
+  .loading {
+    text-align: center;
+    padding: 40px;
+    color: var(--subtext);
+  }
+  .spinner {
+    display: inline-block;
+    width: 32px; height: 32px;
+    border: 3px solid #e4e6eb;
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ===== Mobile ===== */
+  @media (max-width: 768px) {
+    .dashboard { grid-template-columns: repeat(2, 1fr); }
+    .kanban { grid-template-columns: 1fr; }
+    .form-row { grid-template-columns: 1fr; }
+    .topbar { flex-direction: column; gap: 10px; align-items: stretch; }
+    .actions { justify-content: center; flex-wrap: wrap; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Topbar -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">🔧</span>
+      <div>
+        <h1>Squirrel Install</h1>
+        <div class="sub">下单到安装追踪系统</div>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn btn-secondary" @click="showImport">📥 导入 JSON</button>
+      <button class="btn btn-primary" @click="showAdd">+ 手动补单</button>
+      <button class="btn-icon" @click="loadRecords" title="刷新">🔄</button>
+    </div>
+  </header>
+
+  <!-- Dashboard -->
+  <section class="dashboard">
+    <div class="stat-card order">
+      <div class="stat-icon">🛒</div>
+      <div>
+        <div class="stat-value">{{ counts.order }}</div>
+        <div class="stat-label">下单</div>
+      </div>
+    </div>
+    <div class="stat-card container">
+      <div class="stat-icon">📦</div>
+      <div>
+        <div class="stat-value">{{ counts.container }}</div>
+        <div class="stat-label">装柜</div>
+      </div>
+    </div>
+    <div class="stat-card arrival">
+      <div class="stat-icon">🚚</div>
+      <div>
+        <div class="stat-value">{{ counts.arrival }}</div>
+        <div class="stat-label">抵达</div>
+      </div>
+    </div>
+    <div class="stat-card install">
+      <div class="stat-icon">🔨</div>
+      <div>
+        <div class="stat-value">{{ counts.install }}</div>
+        <div class="stat-label">安装</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Kanban -->
+  <main class="kanban">
+    <div v-for="stage in stages" :key="stage.key" class="column">
+      <div class="column-header" :class="'header-' + stage.key">
+        <span class="column-icon">{{ stage.icon }}</span>
+        <span class="column-title">{{ stage.label }}</span>
+        <span class="column-count">{{ recordsByStage[stage.key].length }}</span>
+      </div>
+      <div class="column-body">
+        <div v-if="loading" class="loading"><div class="spinner"></div></div>
+        <div v-else-if="recordsByStage[stage.key].length === 0" class="empty">暂无工程</div>
+        <div v-for="r in recordsByStage[stage.key]" :key="r.id"
+             class="card" :class="'stage-' + r.stage"
+             @click="openDetail(r)">
+          <div class="card-header">
+            <span class="card-projno">{{ r.projNo || '(无编号)' }}</span>
+            <span class="card-salesperson">{{ r.salesperson || '—' }}</span>
+          </div>
+          <div class="card-row">📞 {{ r.customerPhone || '—' }}</div>
+          <div class="card-row">📍 {{ truncate(r.customerAddress, 36) || '—' }}</div>
+          <div class="card-timeline">
+            <div v-for="s in stages" :key="s.key"
+                 class="timeline-dot"
+                 :class="{ active: r.stages[s.key] && r.stages[s.key].date }"
+                 :title="s.label + ': ' + ((r.stages[s.key] && r.stages[s.key].date) || '未填')"></div>
+          </div>
+          <div v-if="isOverdue(r)" class="card-overdue">⚠️ 逾期未完成</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ====== Add Manual Modal ====== -->
+  <div v-if="modal.add" class="modal-mask" @click.self="modal.add = false">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">手动补单</div>
+        <button class="modal-close" @click="modal.add = false">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">工程编号 *</label>
+            <input class="form-input" v-model="addForm.projNo" placeholder="例: PSD01-2401">
+          </div>
+          <div class="form-group">
+            <label class="form-label">业务员</label>
+            <input class="form-input" v-model="addForm.salesperson" placeholder="例: PEGGY">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">客户电话</label>
+            <input class="form-input" v-model="addForm.customerPhone" placeholder="例: 012-3456789">
+          </div>
+          <div class="form-group">
+            <label class="form-label">业务员电话</label>
+            <input class="form-input" v-model="addForm.salespersonPhone" placeholder="例: 011-12345678">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">客户地址 / 抵达地点</label>
+          <textarea class="form-textarea" v-model="addForm.customerAddress" rows="2" placeholder="例: No. 123 Jalan ABC, KL"></textarea>
+        </div>
+        <div class="form-section">
+          <div class="form-section-title">📅 下单信息（可选填）</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">下单日期</label>
+              <input type="date" class="form-input" v-model="addForm.stages.order.date">
+            </div>
+            <div class="form-group">
+              <label class="form-label">下单工厂</label>
+              <input class="form-input" v-model="addForm.stages.order.factory">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">备注</label>
+            <textarea class="form-textarea" v-model="addForm.stages.order.remarks" rows="2"></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" @click="modal.add = false">取消</button>
+        <button class="btn btn-primary" @click="submitAdd" :disabled="!addForm.projNo">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== Import JSON Modal ====== -->
+  <div v-if="modal.import" class="modal-mask" @click.self="modal.import = false">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">导入 JSON</div>
+        <button class="modal-close" @click="modal.import = false">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">选择 JSON 文件</label>
+          <input type="file" accept=".json" id="jsonFile" class="form-input">
+          <div style="font-size: 12px; color: var(--subtext); margin-top: 4px;">
+            支持 backadmin 导出的报价 JSON，或自定义格式数组<br>
+            字段映射: projNo, customerPhone, customerAddress, salesperson, salespersonPhone
+          </div>
+        </div>
+        <div v-if="importPreview.length" class="form-section">
+          <div class="form-section-title">📋 预览 ({{ importPreview.length }} 条)</div>
+          <div v-for="(r, i) in importPreview.slice(0, 5)" :key="i" style="font-size: 12px; padding: 4px 0; border-bottom: 1px solid var(--border);">
+            <strong>{{ r.projNo || '(无编号)' }}</strong> - {{ r.salesperson || '—' }} - {{ r.customerPhone || '—' }}
+          </div>
+          <div v-if="importPreview.length > 5" style="font-size: 12px; color: var(--subtext); margin-top: 6px;">
+            ... 还有 {{ importPreview.length - 5 }} 条
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" @click="modal.import = false">取消</button>
+        <button class="btn btn-primary" @click="submitImport" :disabled="!importPreview.length">导入 {{ importPreview.length }} 条</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== Detail Modal ====== -->
+  <div v-if="modal.detail" class="modal-mask" @click.self="closeDetail">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <div class="modal-title">
+          📋 {{ currentRecord.projNo || '(无编号)' }}
+          <span class="card-salesperson" style="margin-left: 8px;">{{ currentRecord.salesperson || '—' }}</span>
+        </div>
+        <button class="modal-close" @click="closeDetail">×</button>
+      </div>
+      <div class="modal-body">
+        <!-- Tabs -->
+        <div class="tabs">
+          <div v-for="s in stages" :key="s.key"
+               class="tab"
+               :class="{ active: activeTab === s.key }"
+               @click="activeTab = s.key">
+            {{ s.icon }} {{ s.label }}
+            <span v-if="currentRecord.stages[s.key] && currentRecord.stages[s.key].date" style="color: var(--success);">●</span>
+          </div>
+        </div>
+
+        <!-- Tab: Order -->
+        <div v-if="activeTab === 'order'" class="tab-content active">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">下单日期</label>
+              <input type="date" class="form-input" v-model="currentRecord.stages.order.date">
+            </div>
+            <div class="form-group">
+              <label class="form-label">下单工厂</label>
+              <input class="form-input" v-model="currentRecord.stages.order.factory" placeholder="例: ABC 工厂">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">备注</label>
+            <textarea class="form-textarea" v-model="currentRecord.stages.order.remarks" rows="3"></textarea>
+          </div>
+        </div>
+
+        <!-- Tab: Container -->
+        <div v-if="activeTab === 'container'" class="tab-content active">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">装柜日期</label>
+              <input type="date" class="form-input" v-model="currentRecord.stages.container.date">
+            </div>
+            <div class="form-group">
+              <label class="form-label">装柜公司（物流）</label>
+              <input class="form-input" v-model="currentRecord.stages.container.company" placeholder="例: XYZ 物流">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">备注</label>
+            <textarea class="form-textarea" v-model="currentRecord.stages.container.remarks" rows="3"></textarea>
+          </div>
+        </div>
+
+        <!-- Tab: Arrival -->
+        <div v-if="activeTab === 'arrival'" class="tab-content active">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">抵达日期</label>
+              <input type="date" class="form-input" v-model="currentRecord.stages.arrival.date">
+            </div>
+            <div class="form-group">
+              <label class="form-label">抵达地点（客户地址或公司仓库）</label>
+              <input class="form-input" v-model="currentRecord.stages.arrival.location" placeholder="例: 客户家 / 公司仓库">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">备注</label>
+            <textarea class="form-textarea" v-model="currentRecord.stages.arrival.remarks" rows="3"></textarea>
+          </div>
+        </div>
+
+        <!-- Tab: Install -->
+        <div v-if="activeTab === 'install'" class="tab-content active">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">安装日期</label>
+              <input type="date" class="form-input" v-model="currentRecord.stages.install.date">
+            </div>
+            <div class="form-group">
+              <label class="form-label">安装人员</label>
+              <input class="form-input" v-model="currentRecord.stages.install.installer" placeholder="例: 张师傅">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">备注</label>
+            <textarea class="form-textarea" v-model="currentRecord.stages.install.remarks" rows="3"></textarea>
+          </div>
+        </div>
+
+        <!-- Stage & Customer Info (always visible) -->
+        <div class="form-section" style="margin-top: 16px;">
+          <div class="form-section-title">ℹ️ 基本信息</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">当前阶段</label>
+              <select class="form-select" v-model="currentRecord.stage">
+                <option v-for="s in stages" :key="s.key" :value="s.key">{{ s.icon }} {{ s.label }}</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">业务员电话</label>
+              <input class="form-input" v-model="currentRecord.salespersonPhone">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">客户地址 / 抵达地点</label>
+            <textarea class="form-textarea" v-model="currentRecord.customerAddress" rows="2"></textarea>
+          </div>
+        </div>
+
+        <div style="font-size: 12px; color: var(--subtext); padding: 8px 0;">
+          创建: {{ formatDate(currentRecord.createdAt) }} · 更新: {{ formatDate(currentRecord.updatedAt) }}
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-danger" @click="deleteCurrent">🗑 删除</button>
+        <button class="btn btn-success" @click="autoProgress">🔄 自动推进阶段</button>
+        <button class="btn btn-primary" @click="saveCurrent">💾 保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div v-if="toast.show" class="toast" :class="toast.type">{{ toast.text }}</div>
+
+</div>
+
+<script src="https://unpkg.com/vue@3.4.27/dist/vue.global.prod.js"></script>
+<script>
+const { createApp, ref, computed, reactive, onMounted } = Vue;
+
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbz4Q47lLUOnOhqdatvTpYR-wTMqbuy-kYNHX4b5loFxwG111fO9Q2xeKE5xP8O5XBJQ/exec';
+
+const STAGES = [
+  { key: 'order', label: '下单', icon: '🛒' },
+  { key: 'container', label: '装柜', icon: '📦' },
+  { key: 'arrival', label: '抵达', icon: '🚚' },
+  { key: 'install', label: '安装', icon: '🔨' }
+];
+
+function emptyStages() {
+  return {
+    order: { date: '', factory: '', remarks: '' },
+    container: { date: '', company: '', remarks: '' },
+    arrival: { date: '', location: '', remarks: '' },
+    install: { date: '', installer: '', remarks: '' }
+  };
+}
+
+createApp({
+  setup() {
+    const records = ref([]);
+    const loading = ref(false);
+    const modal = reactive({ add: false, import: false, detail: false });
+    const addForm = reactive({
+      projNo: '', salesperson: '', customerPhone: '', salespersonPhone: '',
+      customerAddress: '', stages: emptyStages()
+    });
+    const importPreview = ref([]);
+    const currentRecord = ref(null);
+    const activeTab = ref('order');
+    const toast = reactive({ show: false, text: '', type: 'success' });
+    const stages = STAGES;
+
+    const counts = computed(() => {
+      const c = { order: 0, container: 0, arrival: 0, install: 0 };
+      records.value.forEach(r => { if (c[r.stage] !== undefined) c[r.stage]++; });
+      return c;
+    });
+
+    const recordsByStage = computed(() => {
+      const g = { order: [], container: [], arrival: [], install: [] };
+      records.value.forEach(r => { if (g[r.stage]) g[r.stage].push(r); });
+      // Sort: items with earlier next-milestone date first
+      Object.keys(g).forEach(k => {
+        g[k].sort((a, b) => (a.updatedAt || '').localeCompare(b.updatedAt || ''));
+      });
+      return g;
+    });
+
+    function showToast(text, type = 'success', ms = 2500) {
+      toast.text = text;
+      toast.type = type;
+      toast.show = true;
+      setTimeout(() => { toast.show = false; }, ms);
+    }
+
+    async function callGAS(params) {
+      try {
+        const url = GAS_URL + '?' + new URLSearchParams(params).toString();
+        const resp = await fetch(url, { method: 'GET' });
+        const data = await resp.json();
+        return data;
+      } catch (err) {
+        return { success: false, error: err.message };
+      }
+    }
+
+    async function loadRecords() {
+      loading.value = true;
+      const r = await callGAS({ action: 'getAllRecords' });
+      loading.value = false;
+      if (r.success) {
+        records.value = r.records || [];
+        showToast(`已加载 ${records.value.length} 条工程`, 'success');
+      } else {
+        showToast('加载失败: ' + (r.error || '未知错误'), 'error');
+      }
+    }
+
+    function showAdd() {
+      Object.keys(addForm).forEach(k => {
+        if (k === 'stages') {
+          addForm.stages = emptyStages();
+        } else {
+          addForm[k] = '';
+        }
+      });
+      modal.add = true;
+    }
+
+    async function submitAdd() {
+      const payload = { ...addForm, stages: JSON.stringify(addForm.stages) };
+      const r = await callGAS({ action: 'addManualRecord', ...payload });
+      if (r.success) {
+        showToast('✓ 已保存: ' + r.record.projNo);
+        modal.add = false;
+        await loadRecords();
+      } else {
+        showToast('保存失败: ' + (r.error || '未知错误'), 'error');
+      }
+    }
+
+    function showImport() {
+      importPreview.value = [];
+      const fileInput = document.getElementById('jsonFile');
+      if (fileInput) fileInput.value = '';
+      modal.import = true;
+      // Attach change handler
+      setTimeout(() => {
+        const fi = document.getElementById('jsonFile');
+        if (fi) {
+          fi.onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+              try {
+                const data = JSON.parse(ev.target.result);
+                const arr = Array.isArray(data) ? data : (data.records ? data.records : [data]);
+                importPreview.value = arr.map(r => ({
+                  projNo: r.projNo || r.proj_no || '',
+                  salesperson: r.salesperson || '',
+                  customerPhone: r.customerPhone || r.customer_phone || r.phone || '',
+                  salespersonPhone: r.salespersonPhone || r.salesperson_phone || '',
+                  customerAddress: r.customerAddress || r.customer_address || r.address || ''
+                }));
+                showToast(`已解析 ${importPreview.value.length} 条`, 'success');
+              } catch (err) {
+                showToast('JSON 解析失败: ' + err.message, 'error');
+              }
+            };
+            reader.readAsText(file);
+          };
+        }
+      }, 100);
+    }
+
+    async function submitImport() {
+      const r = await callGAS({ action: 'importRecords', records: JSON.stringify(importPreview.value) });
+      if (r.success) {
+        const results = r.results || { success: 0, failed: 0 };
+        showToast(`✓ 导入完成: ${results.success} 成功${results.failed ? `, ${results.failed} 失败` : ''}`);
+        modal.import = false;
+        await loadRecords();
+      } else {
+        showToast('导入失败: ' + (r.error || '未知错误'), 'error');
+      }
+    }
+
+    function openDetail(record) {
+      currentRecord.value = JSON.parse(JSON.stringify(record));
+      activeTab.value = record.stage || 'order';
+      modal.detail = true;
+    }
+
+    function closeDetail() {
+      modal.detail = false;
+      currentRecord.value = null;
+    }
+
+    function autoProgress() {
+      const r = currentRecord.value;
+      if (!r) return;
+      // Most-advanced stage with a date wins
+      if (r.stages.install && r.stages.install.date) r.stage = 'install';
+      else if (r.stages.arrival && r.stages.arrival.date) r.stage = 'arrival';
+      else if (r.stages.container && r.stages.container.date) r.stage = 'container';
+      else r.stage = 'order';
+      showToast('✓ 已自动推进到: ' + stages.find(s => s.key === r.stage).label);
+    }
+
+    async function saveCurrent() {
+      const r = currentRecord.value;
+      if (!r) return;
+      // Auto-progress on save
+      if (r.stages.install && r.stages.install.date) r.stage = 'install';
+      else if (r.stages.arrival && r.stages.arrival.date) r.stage = 'arrival';
+      else if (r.stages.container && r.stages.container.date) r.stage = 'container';
+      const updates = JSON.stringify({
+        projNo: r.projNo,
+        customerPhone: r.customerPhone,
+        customerAddress: r.customerAddress,
+        salesperson: r.salesperson,
+        salespersonPhone: r.salespersonPhone,
+        stage: r.stage,
+        stages: r.stages
+      });
+      const result = await callGAS({ action: 'updateRecord', id: r.id, updates });
+      if (result.success) {
+        showToast('✓ 已保存');
+        modal.detail = false;
+        await loadRecords();
+      } else {
+        showToast('保存失败: ' + (result.error || '未知错误'), 'error');
+      }
+    }
+
+    async function deleteCurrent() {
+      const r = currentRecord.value;
+      if (!r) return;
+      if (!confirm('确定删除工程 ' + r.projNo + '？此操作不可撤销。')) return;
+      const result = await callGAS({ action: 'deleteRecord', id: r.id });
+      if (result.success) {
+        showToast('✓ 已删除');
+        modal.detail = false;
+        await loadRecords();
+      } else {
+        showToast('删除失败: ' + (result.error || '未知错误'), 'error');
+      }
+    }
+
+    function isOverdue(r) {
+      // Overdue = install date passed but not done? Or simpler: arrival date passed and no install date?
+      // For v1, simple: if the record's current stage has a date more than 7 days ago and no next stage date
+      if (r.stage === 'install') return false; // Done
+      const today = new Date();
+      const stageOrder = ['order', 'container', 'arrival', 'install'];
+      const idx = stageOrder.indexOf(r.stage);
+      if (idx < 0 || idx === 3) return false;
+      // Check if next stage date is filled (then move on)
+      // For overdue, check if CURRENT stage's date is more than 14 days ago
+      const currentStage = r.stages[r.stage];
+      if (!currentStage || !currentStage.date) return false;
+      const stageDate = new Date(currentStage.date);
+      const daysAgo = (today - stageDate) / (1000 * 60 * 60 * 24);
+      return daysAgo > 14;
+    }
+
+    function truncate(s, n) {
+      if (!s) return '';
+      return s.length > n ? s.substring(0, n) + '...' : s;
+    }
+
+    function formatDate(s) {
+      if (!s) return '—';
+      try { return new Date(s).toLocaleString('zh-CN'); } catch (e) { return s; }
+    }
+
+    onMounted(() => loadRecords());
+
+    return {
+      records, loading, modal, addForm, importPreview,
+      currentRecord, activeTab, toast, stages, counts, recordsByStage,
+      showAdd, showImport, openDetail, closeDetail,
+      submitAdd, submitImport, saveCurrent, deleteCurrent, autoProgress,
+      loadRecords, isOverdue, truncate, formatDate
+    };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>
