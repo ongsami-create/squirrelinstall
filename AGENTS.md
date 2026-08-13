@@ -139,6 +139,20 @@
 - 前端: agent 直接改 `index.html` → 备份 → git commit → git push
 - GAS: agent 改 `Code.gs` → 给用户新版 → 用户粘贴 → 部署新版本 → 复制新 URL → agent 改 index.html 的 GAS_URL
 
+### ⚠️ 「新部署」vs「新版本」
+
+| 操作 | URL 变吗 | OAuth scope 变吗 | 什么时候用 |
+|---|---|---|---|
+| **新版本** (管理部署 → ✏️ → 新版本) | 不变 | 沿用旧 token | 日常改代码 |
+| **新部署** (部署 → 新部署) | **变** | **重新弹授权** | 加新 API scope（Calendar / Drive / Sheets 等）|
+
+**新部署之后必须改 index.html 的 GAS_URL** 否则前端 404。
+
+## 当前 GAS Web App URL
+
+- v1.6.2 用: `https://script.google.com/macros/s/AKfycbxXdUu2Svtx3n2VsXHz76FYjFrHBa7hwxR4Kbmhvp_KEQ4A34p1Ck7NnZjGkyH24jlN/exec`
+- (旧 v1.0 URL `AKfycbz4Q47lL...` 已废弃)
+
 ## GAS 调试技巧
 
 - GAS 编辑器 → "执行" 里跑函数看 Logger.log 输出
