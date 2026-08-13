@@ -1,25 +1,28 @@
 /**
- * Squirrel Install - GAS Backend
+ * Squirrel Install v2.0 - GAS Backend
  *
  * 存储：每个工程 1 个 JSON 文件，存到 Drive 文件夹 `SquirrelInstall_Records/`
- * Calendar 同步：每个工程 1 个 all-day event，写入指定 Google Calendar
+ * Calendar 同步：每工程 1 个 all-day event，按当前阶段显示对应日期
  * API：通过 Web App URL 暴露，GET 请求 ?action=xxx&...
  *
+ * 数据模型 v2.0:
+ * - dates: 数组（多选）
+ * - 每个 stage 有自己的字段 + 动态 rows
+ * - 备注是全工程共享
+ * - 无 custom fields
+ *
  * 部署步骤：
- * 1. 打开 https://script.google.com/home，新建项目，命名 SquirrelInstall
- * 2. 把这个文件全部内容粘贴到 Code.gs（覆盖默认内容）
- * 3. 保存（Ctrl+S）
- * 4. 部署 → 新部署 → 类型选「Web 应用」
- *    - 执行身份：我自己
- *    - 访问权限：任何人
- *    - 第一次部署会要求授权 Calendar / Drive 权限
- * 5. 复制 Web 应用 URL，填到前端 index.html 的 GAS_URL 常量
+ * 1. 打开 https://script.google.com/home，新建/打开 SquirrelInstall 项目
+ * 2. 把这个文件全部内容粘贴到 Code.gs
+ * 3. Ctrl+S 保存
+ * 4. 部署 → 新部署 → Web 应用 → 任何人
+ * 5. 复制 Web 应用 URL 填到 index.html 的 GAS_URL
  */
 
 // ===== 配置 =====
 const RECORDS_FOLDER_NAME = 'SquirrelInstall_Records';
 const CALENDAR_ID = 'squirreldesigner9068@gmail.com';
-const VERSION = 'v1.8';
+const VERSION = 'v2.0';
 
 // ===== 入口 =====
 function doGet(e) { return handleRequest(e); }
@@ -32,15 +35,16 @@ function handleRequest(e) {
     let result;
 
     switch (action) {
-      case 'addManualRecord': result = addManualRecord(params); break;
-      case 'importRecords':   result = importRecords(params);   break;
-      case 'getAllRecords':   result = getAllRecords();          break;
-      case 'getRecord':       result = getRecord(params.id);     break;
-      case 'updateRecord':    result = updateRecord(params);     break;
-      case 'deleteRecord':    result = deleteRecord(params.id);  break;
-      case 'syncToCalendar':  result = syncToCalendar(params.id); break;
-      case 'health':          result = { success: true, message: 'SquirrelInstall GAS OK', version: VERSION }; break;
-      default:                result = { success: false, error: 'Unknown action: ' + action };
+      case 'addManualRecord':   result = addManualRecord(params); break;
+      case 'importRecords':     result = importRecords(params); break;
+      case 'getAllRecords':     result = getAllRecords(); break;
+      case 'getRecord':         result = getRecord(params.id); break;
+      case 'updateRecord':      result = updateRecord(params); break;
+      case 'deleteRecord':      result = deleteRecord(params.id); break;
+      case 'syncToCalendar':    result = syncToCalendar(params.id); break;
+      case 'syncAllToCalendar': result = syncAllToCalendar(); break;
+      case 'health':            result = { success: true, message: 'SquirrelInstall GAS OK', version: VERSION }; break;
+      default:                  result = { success: false, error: 'Unknown action: ' + action };
     }
 
     return ContentService
@@ -83,50 +87,51 @@ function getCalendar() {
 }
 
 function getStageColor(stage) {
-  // CalendarApp.EventColor:
-  // 1=PALE_BLUE, 2=PALE_GREEN, 3=MAUVE, 4=PALE_RED, 5=YELLOW,
-  // 6=ORANGE, 7=CYAN, 8=GRAY, 9=BLUE, 10=GREEN, 11=RED
   const map = {
-    'order':     CalendarApp.EventColor.BLUE,    // 9 - 下单蓝
-    'container': CalendarApp.EventColor.ORANGE,  // 6 - 装柜橙
-    'arrival':   CalendarApp.EventColor.GREEN,   // 10 - 抵达绿
-    'install':   CalendarApp.EventColor.MAUVE    // 3 - 安装紫
+    'order':     CalendarApp.EventColor.BLUE,    // 9
+    'container': CalendarApp.EventColor.ORANGE,  // 6
+    'arrival':   CalendarApp.EventColor.GREEN,   // 10
+    'install':   CalendarApp.EventColor.MAUVE    // 3
   };
   return map[stage] || CalendarApp.EventColor.GRAY;
 }
 
 function buildEventTitle(record) {
-  const proj = record.projNo || 'NOID';
-  const addr = record.customerAddress || '—';
-  const sales = record.salesperson || '—';
-  // Calendar 标题有长度限制，截断
-  let title = '[' + proj + '] ' + addr + ' - ' + sales;
+  // 标题: [projNo] 客户名字 | 客户电话 | 客户地址 | 数量 | 业务员 (电话)
+  const r = record;
+  const s = r.stages || {};
+  const totalQty = (s.container && s.container.quantity) || (s.arrival && s.arrival.quantity) || '';
+  const sales = r.salesperson || '—';
+  const salesPhone = r.salespersonPhone ? ' (' + r.salespersonPhone + ')' : '';
+  let title = '[' + (r.projNo || 'NOID') + ']';
+  if (r.customerName) title += ' ' + r.customerName;
+  if (r.customerPhone) title += ' | ' + r.customerPhone;
+  if (r.customerAddress) title += ' | ' + r.customerAddress;
+  if (totalQty) title += ' | 数量:' + totalQty;
+  title += ' | ' + sales + salesPhone;
   if (title.length > 250) title = title.substring(0, 247) + '...';
   return title;
 }
 
 function buildEventDescription(record) {
   const s = record.stages || {};
-  const fmt = (d) => d || '—';
   const lines = [
-    '📋 工程编号: ' + (record.projNo || '—'),
-    '👤 业务员: ' + (record.salesperson || '—') + (record.salespersonPhone ? ' (' + record.salespersonPhone + ')' : ''),
-    '📞 客户电话: ' + (record.customerPhone || '—'),
-    '📍 客户地址: ' + (record.customerAddress || '—'),
+    '📋 工程: ' + (record.projNo || '—'),
+    '👤 客户: ' + (record.customerName || '—') + (record.customerPhone ? ' (' + record.customerPhone + ')' : ''),
+    '📍 地址: ' + (record.customerAddress || '—'),
+    '🏠 抵达: ' + (record.arrivalAddress || '—'),
+    '💼 业务员: ' + (record.salesperson || '—') + (record.salespersonPhone ? ' (' + record.salespersonPhone + ')' : ''),
     '',
-    '━━━ 4 阶段时间表 ━━━',
-    '🛒 下单: ' + fmt(s.order && s.order.date) + (s.order && s.order.factory ? ' @ ' + s.order.factory : ''),
-    '📦 装柜: ' + fmt(s.container && s.container.date) + (s.container && s.container.company ? ' @ ' + s.container.company : ''),
-    '🚚 抵达: ' + fmt(s.arrival && s.arrival.date) + (s.arrival && s.arrival.location ? ' @ ' + s.arrival.location : ''),
-    '🔨 安装: ' + fmt(s.install && s.install.date) + (s.install && s.install.installer ? ' @ ' + s.install.installer : ''),
+    '━━━ 各阶段日期 ━━━',
+    '🛒 下单: ' + fmtDateList(s.order && s.order.dates) + (s.order && s.order.factory ? ' | ' + s.order.factory : ''),
+    '📦 装柜: ' + fmtDateList(s.container && s.container.dates) + (s.container && s.container.company ? ' | ' + s.container.company : '') + (s.container && s.container.trackingNo ? ' | ' + s.container.trackingNo : '') + (s.container && s.container.quantity ? ' | 数量:' + s.container.quantity : ''),
+    '🚚 抵达: ' + fmtDateList(s.arrival && s.arrival.dates) + (s.arrival && s.arrival.deliveryTime ? ' | 送货:' + s.arrival.deliveryTime : ''),
+    '🔨 安装: ' + fmtDateList(s.install && s.install.dates),
     '',
     '━━━ 备注 ━━━',
-    '下单: ' + ((s.order && s.order.remarks) || '—'),
-    '装柜: ' + ((s.container && s.container.remarks) || '—'),
-    '抵达: ' + ((s.arrival && s.arrival.remarks) || '—'),
-    '安装: ' + ((s.install && s.install.remarks) || '—'),
+    record.notes || '—',
     '',
-    '━━━ 系统信息 ━━━',
+    '━━━ 系统 ━━━',
     '记录ID: ' + record.id,
     '最后更新: ' + (record.updatedAt || '—'),
     '当前阶段: ' + (record.stage || '—')
@@ -134,32 +139,40 @@ function buildEventDescription(record) {
   return lines.join('\n');
 }
 
-function getEventDateRange(record) {
-  const s = record.stages || {};
-  const dates = [];
-  ['order', 'container', 'arrival', 'install'].forEach(k => {
-    if (s[k] && s[k].date) {
-      try {
-        // T00:00:00 避免时区问题
-        const d = new Date(s[k].date + 'T00:00:00');
-        if (!isNaN(d.getTime())) dates.push(d);
-      } catch (e) {}
-    }
-  });
-  return dates;
+function fmtDateList(dates) {
+  if (!Array.isArray(dates) || dates.length === 0) return '—';
+  return dates.join(', ');
 }
 
-function trySyncToCalendar(recordId) {
-  try {
-    return { success: true, sync: syncToCalendar(recordId) };
-  } catch (e) {
-    return { success: false, error: e.message, stack: e.stack };
+// v2.0: 按当前阶段拿要显示的日期
+function getEventDateRange(record) {
+  const s = record.stages || {};
+  const stage = record.stage;
+  const dates = [];
+
+  if (stage === 'install') {
+    // 安装: 所有日期连续
+    if (s.install && Array.isArray(s.install.dates)) dates.push(...s.install.dates);
+  } else if (stage === 'arrival') {
+    // 抵达: 抵达日期 + 送货时间日期
+    if (s.arrival && Array.isArray(s.arrival.dates)) dates.push(...s.arrival.dates);
+    if (s.arrival && s.arrival.deliveryTime) {
+      const d = s.arrival.deliveryTime.substring(0, 10);
+      if (d) dates.push(d);
+    }
+  } else if (stage === 'container') {
+    // 装柜: 只装柜日期
+    if (s.container && Array.isArray(s.container.dates)) dates.push(...s.container.dates);
+  } else if (stage === 'order') {
+    // 下单: 只下单日期
+    if (s.order && Array.isArray(s.order.dates)) dates.push(...s.order.dates);
   }
+
+  return dates;
 }
 
 function syncToCalendar(recordId) {
   if (!recordId) return { success: false, error: 'id 必填' };
-
   const loaded = loadRecordById(recordId);
   if (loaded.error) return { success: false, error: loaded.error };
   const { record, file } = loaded;
@@ -171,26 +184,25 @@ function syncToCalendar(recordId) {
 
   const dates = getEventDateRange(record);
 
-  // 没填日期 → 如果之前有 event，删掉
+  // 没日期 → 如果之前有 event，删掉
   if (dates.length === 0) {
     if (record.calendarEventId) {
       try {
         const ev = cal.getEventById(record.calendarEventId);
         if (ev) ev.deleteEvent();
-      } catch (e) {
-        Logger.log('Delete event failed: ' + e.message);
-      }
+      } catch (e) { Logger.log('Delete event failed: ' + e.message); }
       delete record.calendarEventId;
       saveRecordToFile(file, record);
-      return { success: true, action: 'deleted', message: '日期已清空，Calendar event 已删除' };
+      return { success: true, action: 'deleted', message: '日期已清空' };
     }
-    return { success: true, action: 'none', message: '没填日期，没 Calendar event' };
+    return { success: true, action: 'none', message: '没填日期' };
   }
 
-  dates.sort((a, b) => a - b);
-  const start = dates[0];
-  const end = new Date(dates[dates.length - 1]);
-  end.setDate(end.getDate() + 1); // all-day events: end = next day
+  // 多日期连续: min → max
+  const sortedDates = dates.slice().sort();
+  const start = new Date(sortedDates[0] + 'T00:00:00');
+  const end = new Date(sortedDates[sortedDates.length - 1] + 'T00:00:00');
+  end.setDate(end.getDate() + 1); // all-day 事件 end = next day
 
   const title = buildEventTitle(record);
   const desc = buildEventDescription(record);
@@ -203,9 +215,7 @@ function syncToCalendar(recordId) {
     try {
       event = cal.getEventById(record.calendarEventId);
       if (event) action = 'updated';
-    } catch (e) {
-      event = null;
-    }
+    } catch (e) { event = null; }
   }
 
   try {
@@ -234,13 +244,40 @@ function syncToCalendar(recordId) {
   };
 }
 
-// ===== 数据模型工具 =====
+function syncAllToCalendar() {
+  const folder = getRecordsFolder();
+  const files = folder.getFiles();
+  const results = { total: 0, success: 0, failed: 0, errors: [] };
+  while (files.hasNext()) {
+    const file = files.next();
+    let record;
+    try { record = JSON.parse(file.getBlob().getDataAsString()); }
+    catch (e) { continue; }
+    if (!record.id) continue;
+    results.total++;
+    try {
+      const r = syncToCalendar(record.id);
+      if (r.success) {
+        results.success++;
+      } else {
+        results.failed++;
+        results.errors.push((record.projNo || record.id) + ': ' + (r.error || '未知'));
+      }
+    } catch (e) {
+      results.failed++;
+      results.errors.push((record.projNo || record.id) + ': ' + e.message);
+    }
+  }
+  return { success: true, results: results };
+}
+
+// ===== 数据模型工具 (v2.0) =====
 function emptyStages() {
   return {
-    order:     { date: '', factory: '',  remarks: '', customFields: [] },
-    container: { date: '', company: '',  remarks: '', customFields: [] },
-    arrival:   { date: '', location: '', remarks: '', customFields: [] },
-    install:   { date: '', installer: '', remarks: '', customFields: [] }
+    order:     { dates: [], factory: '', rows: [] },
+    container: { dates: [], factory: '', company: '', trackingNo: '', quantity: 0, rows: [] },
+    arrival:   { dates: [], factory: '', company: '', trackingNo: '', quantity: 0, rows: [], deliveryTime: '' },
+    install:   { dates: [], installers: [] }
   };
 }
 
@@ -250,10 +287,15 @@ function sanitizeStages(raw) {
   ['order', 'container', 'arrival', 'install'].forEach(k => {
     if (raw[k] && typeof raw[k] === 'object') {
       base[k] = Object.assign({}, base[k], raw[k]);
-      // customFields 必须是数组
-      if (!Array.isArray(base[k].customFields)) {
-        base[k].customFields = [];
-      }
+    }
+  });
+  // Ensure types
+  ['order', 'container', 'arrival', 'install'].forEach(k => {
+    if (!Array.isArray(base[k].dates)) base[k].dates = [];
+    if (k === 'install') {
+      if (!Array.isArray(base[k].installers)) base[k].installers = [];
+    } else {
+      if (!Array.isArray(base[k].rows)) base[k].rows = [];
     }
   });
   return base;
@@ -270,7 +312,6 @@ function safeJsonParse(s) {
 
 // ===== CRUD =====
 
-// 新增 1 条
 function addManualRecord(params) {
   const folder = getRecordsFolder();
   const id = Utilities.getUuid();
@@ -279,13 +320,15 @@ function addManualRecord(params) {
   const record = {
     id: id,
     projNo: (params.projNo || '').trim(),
+    customerName: (params.customerName || '').trim(),
     customerPhone: (params.customerPhone || '').trim(),
     customerAddress: (params.customerAddress || '').trim(),
+    arrivalAddress: (params.arrivalAddress || '').trim(),
     salesperson: (params.salesperson || '').trim(),
     salespersonPhone: (params.salespersonPhone || '').trim(),
     stage: stage,
+    notes: (params.notes || '').trim(),
     stages: sanitizeStages(safeJsonParse(params.stages)),
-    customColumns: [],
     createdAt: now,
     updatedAt: now
   };
@@ -293,29 +336,22 @@ function addManualRecord(params) {
     return { success: false, error: '工程编号 (projNo) 不能为空' };
   }
   const file = folder.createFile(id + '.json', JSON.stringify(record, null, 2), MimeType.PLAIN_TEXT);
-
-  // v1.7: 自动同步 Calendar (best effort，不阻塞保存)
+  // v2.0: 自动同步 Calendar
   let calendarSync = null;
   try { calendarSync = syncToCalendar(id); }
   catch (e) { calendarSync = { success: false, error: e.message }; }
-
   return { success: true, record: record, calendarSync: calendarSync };
 }
 
-// 批量导入
 function importRecords(params) {
   let arr;
   try { arr = JSON.parse(params.records || '[]'); }
   catch (e) { return { success: false, error: 'records 不是合法 JSON: ' + e.message }; }
-
-  if (!Array.isArray(arr)) {
-    return { success: false, error: 'records 必须是数组' };
-  }
+  if (!Array.isArray(arr)) return { success: false, error: 'records 必须是数组' };
 
   const folder = getRecordsFolder();
   const now = new Date().toISOString();
   const results = { success: 0, failed: 0, errors: [], calendarSynced: 0, calendarFailed: 0 };
-
   arr.forEach((r, i) => {
     try {
       const id = Utilities.getUuid();
@@ -323,17 +359,18 @@ function importRecords(params) {
       const record = {
         id: id,
         projNo: (r.projNo || '').trim(),
-        customerPhone: (r.customerPhone || '').trim(),
-        customerAddress: (r.customerAddress || '').trim(),
+        customerName: (r.customerName || r.customer_name || '').trim(),
+        customerPhone: (r.customerPhone || r.customer_phone || r.phone || '').trim(),
+        customerAddress: (r.customerAddress || r.customer_address || r.address || '').trim(),
+        arrivalAddress: (r.arrivalAddress || r.arrival_address || '').trim(),
         salesperson: (r.salesperson || '').trim(),
-        salespersonPhone: (r.salespersonPhone || '').trim(),
+        salespersonPhone: (r.salespersonPhone || r.salesperson_phone || '').trim(),
         stage: stage,
+        notes: (r.notes || r.remarks || '').trim(),
         stages: sanitizeStages(r.stages),
-        customColumns: Array.isArray(r.customColumns) ? r.customColumns : [],
         createdAt: now,
         updatedAt: now
       };
-      // H: 来源追溯（从 backadmin 导入时记录）
       if (r.source) record.source = String(r.source).trim();
       if (r.orderedAt) record.backadminOrderedAt = String(r.orderedAt).trim();
       if (!record.projNo) {
@@ -343,38 +380,23 @@ function importRecords(params) {
       }
       folder.createFile(id + '.json', JSON.stringify(record, null, 2), MimeType.PLAIN_TEXT);
       results.success++;
-
-      // v1.7: 自动同步 Calendar (best effort)
+      // 自动同步 Calendar
       try {
         const sync = syncToCalendar(id);
         if (sync.success && (sync.action === 'created' || sync.action === 'updated')) {
-          results.calendarSynced = (results.calendarSynced || 0) + 1;
+          results.calendarSynced++;
         } else {
-          results.calendarFailed = (results.calendarFailed || 0) + 1;
+          results.calendarFailed++;
         }
-      } catch (e) {
-        results.calendarFailed = (results.calendarFailed || 0) + 1;
-      }
-      // try {
-      //   const sync = syncToCalendar(id);
-      //   if (sync.success && (sync.action === 'created' || sync.action === 'updated')) {
-      //     results.calendarSynced++;
-      //   } else {
-      //     results.calendarFailed++;
-      //   }
-      // } catch (e) {
-      //   results.calendarFailed++;
-      // }
+      } catch (e) { results.calendarFailed++; }
     } catch (err) {
       results.failed++;
       results.errors.push('第 ' + (i+1) + ' 条: ' + err.message);
     }
   });
-
   return { success: true, results: results };
 }
 
-// 拉所有
 function getAllRecords() {
   const folder = getRecordsFolder();
   const files = folder.getFiles();
@@ -383,7 +405,7 @@ function getAllRecords() {
     const file = files.next();
     try {
       const content = file.getBlob().getDataAsString();
-      if (content) records.push(JSON.parse(content));
+      if (content) records.push(sanitizeRecordForClient(JSON.parse(content)));
     } catch (err) {
       Logger.log('Skip invalid file: ' + file.getName() + ' - ' + err.message);
     }
@@ -392,15 +414,22 @@ function getAllRecords() {
   return { success: true, records: records, count: records.length };
 }
 
-// 单条
+// 把 storage 格式转为 client 格式（v2.0）
+function sanitizeRecordForClient(rec) {
+  if (!rec) return rec;
+  const out = Object.assign({}, rec);
+  out.stages = sanitizeStages(rec.stages);
+  out.notes = rec.notes || '';
+  return out;
+}
+
 function getRecord(id) {
   if (!id) return { success: false, error: 'id 必填' };
   const loaded = loadRecordById(id);
   if (loaded.error) return { success: false, error: loaded.error };
-  return { success: true, record: loaded.record };
+  return { success: true, record: sanitizeRecordForClient(loaded.record) };
 }
 
-// 更新（局部更新）
 function updateRecord(params) {
   const id = params.id;
   if (!id) return { success: false, error: 'id 必填' };
@@ -413,50 +442,37 @@ function updateRecord(params) {
   catch (e) { return { success: false, error: 'updates 不是合法 JSON: ' + e.message }; }
 
   const merged = Object.assign({}, existing, updates);
-  if (updates.stages) {
-    merged.stages = sanitizeStages(updates.stages);
-  }
-  if (merged.stage && !validStage(merged.stage)) {
-    merged.stage = existing.stage || 'order';
-  }
+  if (updates.stages) merged.stages = sanitizeStages(updates.stages);
+  if (merged.stage && !validStage(merged.stage)) merged.stage = existing.stage || 'order';
   merged.updatedAt = new Date().toISOString();
 
   saveRecordToFile(file, merged);
 
-  // v1.7: 自动同步 Calendar (best effort)
+  // 自动同步 Calendar
   let calendarSync = null;
   try { calendarSync = syncToCalendar(id); }
   catch (e) { calendarSync = { success: false, error: e.message }; }
 
-  return { success: true, record: merged, calendarSync: calendarSync };
+  return { success: true, record: sanitizeRecordForClient(merged), calendarSync: calendarSync };
 }
 
-// 删除（移到回收站 + 删 Calendar event）
 function deleteRecord(id) {
   if (!id) return { success: false, error: 'id 必填' };
   const loaded = loadRecordById(id);
   if (loaded.error) return { success: false, error: loaded.error };
   const { record, file } = loaded;
-
-  // 先删 Calendar event
-  let calendarDeleted = false;
+  // 删 Calendar event
   if (record.calendarEventId) {
     try {
       const cal = getCalendar();
       if (cal) {
         const ev = cal.getEventById(record.calendarEventId);
-        if (ev) {
-          ev.deleteEvent();
-          calendarDeleted = true;
-        }
+        if (ev) ev.deleteEvent();
       }
-    } catch (e) {
-      Logger.log('Delete calendar event failed: ' + e.message);
-    }
+    } catch (e) { Logger.log('Delete calendar event failed: ' + e.message); }
   }
-
   file.setTrashed(true);
-  return { success: true, calendarDeleted: calendarDeleted };
+  return { success: true };
 }
 
 // ===== 测试 =====
@@ -464,12 +480,7 @@ function _test() {
   Logger.log('Test 1: health');
   const h = handleRequest({ parameter: { action: 'health' } });
   Logger.log(h.getContent());
-
-  Logger.log('Test 2: getAllRecords');
-  const all = getAllRecords();
-  Logger.log('Count: ' + all.count);
-
-  Logger.log('Test 3: Calendar access');
+  Logger.log('Test 2: Calendar access');
   try {
     const cal = getCalendar();
     Logger.log('Calendar: ' + (cal ? cal.getName() : 'NULL'));

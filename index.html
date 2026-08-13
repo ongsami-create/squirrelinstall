@@ -483,6 +483,145 @@
   .custom-field-form .form-select { padding: 6px 8px; font-size: 13px; }
   .btn-sm { padding: 4px 10px; font-size: 12px; }
 
+  /* v2.0: Collapsible stage sections */
+  details.stage-section {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 10px;
+    overflow: hidden;
+  }
+  details.stage-section[open] {
+    box-shadow: var(--shadow);
+  }
+  details.stage-section > summary {
+    padding: 10px 14px;
+    background: #f7f8fa;
+    cursor: pointer;
+    font-weight: 600;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    user-select: none;
+  }
+  details.stage-section > summary::-webkit-details-marker { display: none; }
+  details.stage-section > summary::before {
+    content: '▶';
+    font-size: 10px;
+    color: var(--subtext);
+    transition: transform 0.15s;
+  }
+  details.stage-section[open] > summary::before {
+    transform: rotate(90deg);
+  }
+  details.stage-section > summary:hover { background: #eef0f3; }
+  details.stage-section .stage-content {
+    padding: 12px 14px;
+  }
+  details.stage-section .stage-summary-count {
+    margin-left: auto;
+    background: #e4e6eb;
+    color: var(--text);
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 500;
+  }
+  details.stage-section[data-stage="order"] > summary { border-left: 4px solid var(--order); }
+  details.stage-section[data-stage="container"] > summary { border-left: 4px solid var(--container); }
+  details.stage-section[data-stage="arrival"] > summary { border-left: 4px solid var(--arrival); }
+  details.stage-section[data-stage="install"] > summary { border-left: 4px solid var(--install); }
+
+  /* Dynamic rows */
+  .dynamic-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .dynamic-row .form-input,
+  .dynamic-row .form-textarea { padding: 6px 8px; font-size: 13px; }
+  .dynamic-row .confirmed-check {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--success);
+    font-weight: 600;
+  }
+
+  /* Multi-date picker */
+  .date-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 4px;
+  }
+  .date-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #f0f7ff;
+    border: 1px solid #b3d9ff;
+    border-radius: 16px;
+    padding: 4px 12px;
+    font-size: 13px;
+    color: #0066cc;
+  }
+  .date-pill .remove {
+    cursor: pointer;
+    color: #0066cc;
+    font-weight: bold;
+    font-size: 14px;
+  }
+  .date-pill .remove:hover { color: var(--danger); }
+
+  /* Installers list */
+  .installer-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+
+  /* Import tabs */
+  .import-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 16px;
+    border-bottom: 2px solid var(--border);
+  }
+  .import-tab {
+    background: transparent;
+    border: none;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--subtext);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+  }
+  .import-tab.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+  }
+  .import-tab:hover { color: var(--text); }
+  .import-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .import-row:last-child { border-bottom: none; }
+  .import-row input[type="checkbox"] {
+    width: 18px; height: 18px;
+    cursor: pointer;
+  }
+
   /* ===== Mobile ===== */
   @media (max-width: 768px) {
     .dashboard { grid-template-columns: repeat(2, 1fr); }
@@ -530,9 +669,9 @@
       <button v-if="searchQuery" class="search-clear" @click="searchQuery = ''" title="清空">×</button>
     </div>
     <div class="actions">
+      <button class="btn btn-secondary" @click="syncAllToCalendar" title="一键同步全部到 Google Calendar">📅 同步日历</button>
       <button class="btn btn-secondary" @click="exportExcel" title="导出全部为 Excel">⬇ Excel</button>
-      <button class="btn btn-secondary" @click="showImport">📥 导入 JSON</button>
-      <button class="btn btn-secondary" @click="importFromBackadmin" title="从 backadmin 拉已下单的 quote">📡 从 backadmin</button>
+      <button class="btn btn-secondary" @click="showImport">📋 导入报价</button>
       <button class="btn btn-primary" @click="showAdd">+ 手动补单</button>
       <button class="btn-icon" @click="loadRecords" title="刷新">🔄</button>
     </div>
@@ -620,13 +759,14 @@
             <span class="card-projno" v-html="highlight(r.projNo || '(无编号)', searchQuery)"></span>
             <span class="card-salesperson" v-html="highlight(r.salesperson || '—', searchQuery)"></span>
           </div>
+          <div class="card-row" v-html="'👤 ' + highlight(r.customerName || '—', searchQuery)"></div>
           <div class="card-row" v-html="'📞 ' + highlight(r.customerPhone || '—', searchQuery)"></div>
-          <div class="card-row" v-html="'📍 ' + highlight(truncate(r.customerAddress, 36) || '—', searchQuery)"></div>
+          <div class="card-row" v-html="'📍 ' + highlight(truncate(r.customerAddress, 40) || '—', searchQuery)"></div>
           <div class="card-timeline">
             <div v-for="s in stages" :key="s.key"
                  class="timeline-dot"
-                 :class="{ active: r.stages[s.key] && r.stages[s.key].date }"
-                 :title="s.label + ': ' + ((r.stages[s.key] && r.stages[s.key].date) || '未填')"></div>
+                 :class="{ active: hasAnyDate(r, s.key) }"
+                 :title="s.label + ': ' + (getStageDateSummary(r, s.key) || '未填')"></div>
           </div>
           <div v-if="isOverdue(r)" class="card-overdue">⚠️ 逾期未完成</div>
         </div>
@@ -654,34 +794,29 @@
         </div>
         <div class="form-row">
           <div class="form-group">
+            <label class="form-label">客户名字</label>
+            <input class="form-input" v-model="addForm.customerName" placeholder="例: 陈小明">
+          </div>
+          <div class="form-group">
             <label class="form-label">客户电话</label>
             <input class="form-input" v-model="addForm.customerPhone" placeholder="例: 012-3456789">
           </div>
-          <div class="form-group">
-            <label class="form-label">业务员电话</label>
-            <input class="form-input" v-model="addForm.salespersonPhone" placeholder="例: 011-12345678">
-          </div>
         </div>
         <div class="form-group">
-          <label class="form-label">客户地址 / 抵达地点</label>
+          <label class="form-label">客户地址</label>
           <textarea class="form-textarea" v-model="addForm.customerAddress" rows="2" placeholder="例: No. 123 Jalan ABC, KL"></textarea>
         </div>
-        <div class="form-section">
-          <div class="form-section-title">📅 下单信息（可选填）</div>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">下单日期</label>
-              <input type="date" class="form-input" v-model="addForm.stages.order.date">
-            </div>
-            <div class="form-group">
-              <label class="form-label">下单工厂</label>
-              <input class="form-input" v-model="addForm.stages.order.factory">
-            </div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">备注</label>
-            <textarea class="form-textarea" v-model="addForm.stages.order.remarks" rows="2"></textarea>
-          </div>
+        <div class="form-group">
+          <label class="form-label">抵达地址（客户地址或公司仓库）</label>
+          <input class="form-input" v-model="addForm.arrivalAddress" placeholder="例: 客户家 / 公司仓库">
+        </div>
+        <div class="form-group">
+          <label class="form-label">业务员电话</label>
+          <input class="form-input" v-model="addForm.salespersonPhone" placeholder="例: 011-12345678">
+        </div>
+        <div class="form-group">
+          <label class="form-label">备注（共用）</label>
+          <textarea class="form-textarea" v-model="addForm.notes" rows="2"></textarea>
         </div>
       </div>
       <div class="modal-footer">
@@ -699,41 +834,71 @@
         <button class="modal-close" @click="modal.import = false">×</button>
       </div>
       <div class="modal-body">
-        <div class="form-group">
-          <label class="form-label">选择 JSON 文件</label>
-          <input type="file" accept=".json,application/json" id="jsonFile" class="form-input" @change="handleJsonFile">
-          <div style="font-size: 12px; color: var(--subtext); margin-top: 4px;">
-            或直接粘贴 JSON 文本到下面 ↓
+        <!-- 两种导入方式 -->
+        <div class="import-tabs">
+          <button class="import-tab" :class="{ active: importTab === 'cloud' }" @click="importTab = 'cloud'">
+            ☁️ 从云端 (backadmin)
+          </button>
+          <button class="import-tab" :class="{ active: importTab === 'local' }" @click="importTab = 'local'">
+            📁 从本地 JSON
+          </button>
+        </div>
+
+        <!-- 云端导入 -->
+        <div v-if="importTab === 'cloud'">
+          <div class="form-group">
+            <button class="btn btn-primary" @click="fetchFromBackadmin" :disabled="cloudLoading">
+              {{ cloudLoading ? '⏳ 拉取中...' : '🔄 拉取已下单的报价' }}
+            </button>
+            <span style="margin-left: 10px; color: var(--subtext); font-size: 12px;">
+              只显示 backadmin 里 orderedAt 有值的报价
+            </span>
+          </div>
+          <div v-if="importPreview.length" class="form-section">
+            <div class="form-section-title">☁️ 找到 {{ importPreview.length }} 条 (勾选要导入的)</div>
+            <div v-for="(r, idx) in importPreview" :key="idx" class="import-row">
+              <input type="checkbox" :id="'imp-' + idx" v-model="importSelected[idx]">
+              <label :for="'imp-' + idx" style="flex:1; cursor: pointer; font-size: 13px;">
+                <strong>{{ r.projNo }}</strong> · {{ r.salesperson }} · {{ r.customerName || '—' }} · {{ truncate(r.customerAddress, 40) }}
+              </label>
+            </div>
           </div>
         </div>
-        <div class="form-group">
-          <label class="form-label">粘贴 JSON 文本</label>
-          <textarea class="form-textarea" v-model="importText" rows="6"
-                    placeholder='[{"projNo":"PSD01","salesperson":"PEGGY","customerPhone":"012-...","customerAddress":"..."}]'
-                    @input="parseImportText"></textarea>
-        </div>
-        <div style="font-size: 12px; color: var(--subtext); margin-top: 4px;">
-          支持格式: 数组 / <code>{records:[...]}</code> / 单个对象<br>
-          字段映射: projNo, customerPhone, customerAddress, salesperson, salespersonPhone
-        </div>
-        <div v-if="importPreview.length" class="form-section">
-          <div class="form-section-title">📋 预览 ({{ importPreview.length }} 条)</div>
-          <div v-for="(r, i) in importPreview.slice(0, 5)" :key="i" style="font-size: 12px; padding: 4px 0; border-bottom: 1px solid var(--border);">
-            <strong>{{ r.projNo || '(无编号)' }}</strong> - {{ r.salesperson || '—' }} - {{ r.customerPhone || '—' }}
+
+        <!-- 本地导入 -->
+        <div v-if="importTab === 'local'">
+          <div class="form-group">
+            <label class="form-label">选择 JSON 文件</label>
+            <input type="file" accept=".json,application/json" id="jsonFile" class="form-input" @change="handleJsonFile">
+            <div style="font-size: 12px; color: var(--subtext); margin-top: 4px;">
+              或直接粘贴 JSON 文本到下面 ↓
+            </div>
           </div>
-          <div v-if="importPreview.length > 5" style="font-size: 12px; color: var(--subtext); margin-top: 6px;">
-            ... 还有 {{ importPreview.length - 5 }} 条
+          <div class="form-group">
+            <label class="form-label">粘贴 JSON 文本</label>
+            <textarea class="form-textarea" v-model="importText" rows="6"
+                      placeholder='[{"projNo":"PSD01","salesperson":"PEGGY","customerPhone":"012-...","customerAddress":"..."}]'
+                      @input="parseImportText"></textarea>
+          </div>
+          <div v-if="importPreview.length" class="form-section">
+            <div class="form-section-title">📁 找到 {{ importPreview.length }} 条 (勾选要导入的)</div>
+            <div v-for="(r, idx) in importPreview" :key="idx" class="import-row">
+              <input type="checkbox" :id="'imp2-' + idx" v-model="importSelected[idx]">
+              <label :for="'imp2-' + idx" style="flex:1; cursor: pointer; font-size: 13px;">
+                <strong>{{ r.projNo }}</strong> · {{ r.salesperson }} · {{ r.customerName || '—' }} · {{ truncate(r.customerAddress, 40) }}
+              </label>
+            </div>
           </div>
         </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" @click="modal.import = false">取消</button>
-        <button class="btn btn-primary" @click="submitImport" :disabled="!importPreview.length">导入 {{ importPreview.length }} 条</button>
+        <button class="btn btn-primary" @click="submitImport" :disabled="!getSelectedCount()">导入 {{ getSelectedCount() }} 条</button>
       </div>
     </div>
   </div>
 
-  <!-- ====== Detail Modal ====== -->
+  <!-- ====== Detail Modal v2.0 ====== -->
   <div v-if="modal.detail" class="modal-mask" @click.self="closeDetail">
     <div class="modal modal-lg">
       <div class="modal-header">
@@ -744,176 +909,9 @@
         <button class="modal-close" @click="closeDetail">×</button>
       </div>
       <div class="modal-body">
-        <!-- Tabs -->
-        <div class="tabs">
-          <div v-for="s in stages" :key="s.key"
-               class="tab"
-               :class="{ active: activeTab === s.key }"
-               @click="activeTab = s.key">
-            {{ s.icon }} {{ s.label }}
-            <span v-if="currentRecord.stages[s.key] && currentRecord.stages[s.key].date" style="color: var(--success);">●</span>
-          </div>
-        </div>
 
-        <!-- Tab: Order -->
-        <div v-if="activeTab === 'order'" class="tab-content active">
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">下单日期</label>
-              <input type="date" class="form-input" v-model="currentRecord.stages.order.date">
-            </div>
-            <div class="form-group">
-              <label class="form-label">下单工厂</label>
-              <input class="form-input" v-model="currentRecord.stages.order.factory" placeholder="例: ABC 工厂">
-            </div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">备注</label>
-            <textarea class="form-textarea" v-model="currentRecord.stages.order.remarks" rows="3"></textarea>
-          </div>
-          <!-- B: 自定义栏目 -->
-          <div class="custom-fields">
-            <div class="custom-fields-title">📌 自定义字段</div>
-            <div v-for="(cf, idx) in currentRecord.stages.order.customFields" :key="'order-cf-' + idx" class="custom-field">
-              <label class="form-label">{{ cf.name }}</label>
-              <input v-if="cf.type === 'date'" type="date" class="form-input" v-model="cf.value">
-              <input v-else class="form-input" v-model="cf.value" :placeholder="cf.name">
-              <button class="btn-icon-sm" @click="removeCustomField('order', idx)" title="删除">×</button>
-            </div>
-            <div v-if="addingFieldFor === 'order'" class="custom-field-form">
-              <input class="form-input" v-model="newField.name" placeholder="字段名 (例：订单号)">
-              <select class="form-select" v-model="newField.type">
-                <option value="text">文本</option>
-                <option value="date">日期</option>
-              </select>
-              <input v-if="newField.type === 'date'" type="date" class="form-input" v-model="newField.value">
-              <input v-else class="form-input" v-model="newField.value" placeholder="默认值 (可选)">
-              <button class="btn btn-primary btn-sm" @click="addCustomField('order')">✓</button>
-              <button class="btn btn-secondary btn-sm" @click="cancelAddField">×</button>
-            </div>
-            <button v-else class="btn btn-secondary btn-sm" @click="startAddField('order')">+ 添加字段</button>
-          </div>
-        </div>
-
-        <!-- Tab: Container -->
-        <div v-if="activeTab === 'container'" class="tab-content active">
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">装柜日期</label>
-              <input type="date" class="form-input" v-model="currentRecord.stages.container.date">
-            </div>
-            <div class="form-group">
-              <label class="form-label">装柜公司（物流）</label>
-              <input class="form-input" v-model="currentRecord.stages.container.company" placeholder="例: XYZ 物流">
-            </div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">备注</label>
-            <textarea class="form-textarea" v-model="currentRecord.stages.container.remarks" rows="3"></textarea>
-          </div>
-          <div class="custom-fields">
-            <div class="custom-fields-title">📌 自定义字段</div>
-            <div v-for="(cf, idx) in currentRecord.stages.container.customFields" :key="'container-cf-' + idx" class="custom-field">
-              <label class="form-label">{{ cf.name }}</label>
-              <input v-if="cf.type === 'date'" type="date" class="form-input" v-model="cf.value">
-              <input v-else class="form-input" v-model="cf.value" :placeholder="cf.name">
-              <button class="btn-icon-sm" @click="removeCustomField('container', idx)" title="删除">×</button>
-            </div>
-            <div v-if="addingFieldFor === 'container'" class="custom-field-form">
-              <input class="form-input" v-model="newField.name" placeholder="字段名 (例：柜号)">
-              <select class="form-select" v-model="newField.type">
-                <option value="text">文本</option>
-                <option value="date">日期</option>
-              </select>
-              <input v-if="newField.type === 'date'" type="date" class="form-input" v-model="newField.value">
-              <input v-else class="form-input" v-model="newField.value" placeholder="默认值 (可选)">
-              <button class="btn btn-primary btn-sm" @click="addCustomField('container')">✓</button>
-              <button class="btn btn-secondary btn-sm" @click="cancelAddField">×</button>
-            </div>
-            <button v-else class="btn btn-secondary btn-sm" @click="startAddField('container')">+ 添加字段</button>
-          </div>
-        </div>
-
-        <!-- Tab: Arrival -->
-        <div v-if="activeTab === 'arrival'" class="tab-content active">
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">抵达日期</label>
-              <input type="date" class="form-input" v-model="currentRecord.stages.arrival.date">
-            </div>
-            <div class="form-group">
-              <label class="form-label">抵达地点（客户地址或公司仓库）</label>
-              <input class="form-input" v-model="currentRecord.stages.arrival.location" placeholder="例: 客户家 / 公司仓库">
-            </div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">备注</label>
-            <textarea class="form-textarea" v-model="currentRecord.stages.arrival.remarks" rows="3"></textarea>
-          </div>
-          <div class="custom-fields">
-            <div class="custom-fields-title">📌 自定义字段</div>
-            <div v-for="(cf, idx) in currentRecord.stages.arrival.customFields" :key="'arrival-cf-' + idx" class="custom-field">
-              <label class="form-label">{{ cf.name }}</label>
-              <input v-if="cf.type === 'date'" type="date" class="form-input" v-model="cf.value">
-              <input v-else class="form-input" v-model="cf.value" :placeholder="cf.name">
-              <button class="btn-icon-sm" @click="removeCustomField('arrival', idx)" title="删除">×</button>
-            </div>
-            <div v-if="addingFieldFor === 'arrival'" class="custom-field-form">
-              <input class="form-input" v-model="newField.name" placeholder="字段名 (例：签收人)">
-              <select class="form-select" v-model="newField.type">
-                <option value="text">文本</option>
-                <option value="date">日期</option>
-              </select>
-              <input v-if="newField.type === 'date'" type="date" class="form-input" v-model="newField.value">
-              <input v-else class="form-input" v-model="newField.value" placeholder="默认值 (可选)">
-              <button class="btn btn-primary btn-sm" @click="addCustomField('arrival')">✓</button>
-              <button class="btn btn-secondary btn-sm" @click="cancelAddField">×</button>
-            </div>
-            <button v-else class="btn btn-secondary btn-sm" @click="startAddField('arrival')">+ 添加字段</button>
-          </div>
-        </div>
-
-        <!-- Tab: Install -->
-        <div v-if="activeTab === 'install'" class="tab-content active">
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">安装日期</label>
-              <input type="date" class="form-input" v-model="currentRecord.stages.install.date">
-            </div>
-            <div class="form-group">
-              <label class="form-label">安装人员</label>
-              <input class="form-input" v-model="currentRecord.stages.install.installer" placeholder="例: 张师傅">
-            </div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">备注</label>
-            <textarea class="form-textarea" v-model="currentRecord.stages.install.remarks" rows="3"></textarea>
-          </div>
-          <div class="custom-fields">
-            <div class="custom-fields-title">📌 自定义字段</div>
-            <div v-for="(cf, idx) in currentRecord.stages.install.customFields" :key="'install-cf-' + idx" class="custom-field">
-              <label class="form-label">{{ cf.name }}</label>
-              <input v-if="cf.type === 'date'" type="date" class="form-input" v-model="cf.value">
-              <input v-else class="form-input" v-model="cf.value" :placeholder="cf.name">
-              <button class="btn-icon-sm" @click="removeCustomField('install', idx)" title="删除">×</button>
-            </div>
-            <div v-if="addingFieldFor === 'install'" class="custom-field-form">
-              <input class="form-input" v-model="newField.name" placeholder="字段名 (例：保修期)">
-              <select class="form-select" v-model="newField.type">
-                <option value="text">文本</option>
-                <option value="date">日期</option>
-              </select>
-              <input v-if="newField.type === 'date'" type="date" class="form-input" v-model="newField.value">
-              <input v-else class="form-input" v-model="newField.value" placeholder="默认值 (可选)">
-              <button class="btn btn-primary btn-sm" @click="addCustomField('install')">✓</button>
-              <button class="btn btn-secondary btn-sm" @click="cancelAddField">×</button>
-            </div>
-            <button v-else class="btn btn-secondary btn-sm" @click="startAddField('install')">+ 添加字段</button>
-          </div>
-        </div>
-
-        <!-- Stage & Customer Info (always visible) -->
-        <div class="form-section" style="margin-top: 16px;">
+        <!-- 基本信息 (v2.0: 客户名字 + 客户地址 + 抵达地址 + 业务员) -->
+        <div class="form-section" style="background: #f7f8fa;">
           <div class="form-section-title">ℹ️ 基本信息</div>
           <div class="form-row">
             <div class="form-group">
@@ -923,24 +921,217 @@
               </select>
             </div>
             <div class="form-group">
-              <label class="form-label">业务员电话</label>
-              <input class="form-input" v-model="currentRecord.salespersonPhone">
+              <label class="form-label">工程编号</label>
+              <input class="form-input" v-model="currentRecord.projNo" placeholder="例: PSD01-2401">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">客户名字</label>
+              <input class="form-input" v-model="currentRecord.customerName" placeholder="例: 陈小明">
+            </div>
+            <div class="form-group">
+              <label class="form-label">客户电话</label>
+              <input class="form-input" v-model="currentRecord.customerPhone" placeholder="例: 012-3456789">
             </div>
           </div>
           <div class="form-group">
-            <label class="form-label">客户地址 / 抵达地点</label>
-            <textarea class="form-textarea" v-model="currentRecord.customerAddress" rows="2"></textarea>
+            <label class="form-label">客户地址</label>
+            <textarea class="form-textarea" v-model="currentRecord.customerAddress" rows="2" placeholder="例: No. 123 Jalan ABC, KL"></textarea>
           </div>
+          <div class="form-group">
+            <label class="form-label">抵达地址（客户地址或公司仓库）</label>
+            <input class="form-input" v-model="currentRecord.arrivalAddress" placeholder="例: 客户家 / 公司仓库">
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">业务员</label>
+              <input class="form-input" v-model="currentRecord.salesperson" placeholder="例: PEGGY">
+            </div>
+            <div class="form-group">
+              <label class="form-label">业务员电话</label>
+              <input class="form-input" v-model="currentRecord.salespersonPhone" placeholder="例: 011-12345678">
+            </div>
+          </div>
+        </div>
+
+        <!-- 阶段 1: 下单 -->
+        <details class="stage-section" data-stage="order" :open="stageOpen.order">
+          <summary>
+            🛒 下单
+            <span class="stage-summary-count" v-if="getStageSummary('order')">{{ getStageSummary('order') }}</span>
+          </summary>
+          <div class="stage-content">
+            <div class="form-group">
+              <label class="form-label">下单日期 (可多选)</label>
+              <div class="date-list">
+                <span v-for="(d, idx) in currentRecord.stages.order.dates" :key="'od-' + idx" class="date-pill">
+                  📅 {{ d }}
+                  <span class="remove" @click="removeStageDate('order', idx)">×</span>
+                </span>
+              </div>
+              <input type="date" class="form-input" @change="addStageDate('order', $event.target.value); $event.target.value=''">
+            </div>
+            <div class="form-group">
+              <label class="form-label">下单工厂</label>
+              <input class="form-input" v-model="currentRecord.stages.order.factory" placeholder="例: ABC 工厂">
+            </div>
+            <div class="form-group">
+              <label class="form-label">输入框 / 说明（可增加行）</label>
+              <div v-for="(row, idx) in currentRecord.stages.order.rows" :key="'or-' + idx" class="dynamic-row">
+                <input class="form-input" v-model="row.text" placeholder="说明...">
+                <button class="btn-icon-sm" @click="removeStageRow('order', idx)" title="删除">×</button>
+              </div>
+              <button class="btn btn-secondary btn-sm" @click="addStageRow('order')">+ 增加行</button>
+            </div>
+          </div>
+        </details>
+
+        <!-- 阶段 2: 装柜 (数据从下单带过来) -->
+        <details class="stage-section" data-stage="container" :open="stageOpen.container">
+          <summary>
+            📦 装柜
+            <span class="stage-summary-count" v-if="getStageSummary('container')">{{ getStageSummary('container') }}</span>
+          </summary>
+          <div class="stage-content">
+            <div class="form-group">
+              <label class="form-label">装柜日期 (可多选)</label>
+              <div class="date-list">
+                <span v-for="(d, idx) in currentRecord.stages.container.dates" :key="'cd-' + idx" class="date-pill">
+                  📅 {{ d }}
+                  <span class="remove" @click="removeStageDate('container', idx)">×</span>
+                </span>
+              </div>
+              <input type="date" class="form-input" @change="addStageDate('container', $event.target.value); $event.target.value=''">
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">下单工厂 (从下单带过来)</label>
+                <input class="form-input" v-model="currentRecord.stages.container.factory" :placeholder="currentRecord.stages.order.factory || '—'">
+              </div>
+              <div class="form-group">
+                <label class="form-label">装柜公司 (物流)</label>
+                <input class="form-input" v-model="currentRecord.stages.container.company" placeholder="例: XYZ 物流">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">物流编号</label>
+                <input class="form-input" v-model="currentRecord.stages.container.trackingNo" placeholder="例: TN12345">
+              </div>
+              <div class="form-group">
+                <label class="form-label">数量</label>
+                <input type="number" class="form-input" v-model.number="currentRecord.stages.container.quantity" placeholder="0">
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">输入框 / 说明（可增加行）</label>
+              <div v-for="(row, idx) in currentRecord.stages.container.rows" :key="'cr-' + idx" class="dynamic-row">
+                <input class="form-input" v-model="row.text" placeholder="说明...">
+                <button class="btn-icon-sm" @click="removeStageRow('container', idx)" title="删除">×</button>
+              </div>
+              <button class="btn btn-secondary btn-sm" @click="addStageRow('container')">+ 增加行</button>
+            </div>
+          </div>
+        </details>
+
+        <!-- 阶段 3: 抵达 (数据从装柜带过来 + 确认抵达 + 送货时间) -->
+        <details class="stage-section" data-stage="arrival" :open="stageOpen.arrival">
+          <summary>
+            🚚 抵达
+            <span class="stage-summary-count" v-if="getStageSummary('arrival')">{{ getStageSummary('arrival') }}</span>
+          </summary>
+          <div class="stage-content">
+            <div class="form-group">
+              <label class="form-label">抵达日期 (可多选)</label>
+              <div class="date-list">
+                <span v-for="(d, idx) in currentRecord.stages.arrival.dates" :key="'ad-' + idx" class="date-pill">
+                  📅 {{ d }}
+                  <span class="remove" @click="removeStageDate('arrival', idx)">×</span>
+                </span>
+              </div>
+              <input type="date" class="form-input" @change="addStageDate('arrival', $event.target.value); $event.target.value=''">
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">下单工厂 (从下单带过来)</label>
+                <input class="form-input" v-model="currentRecord.stages.arrival.factory" :placeholder="currentRecord.stages.order.factory || '—'">
+              </div>
+              <div class="form-group">
+                <label class="form-label">装柜公司 (从装柜带过来)</label>
+                <input class="form-input" v-model="currentRecord.stages.arrival.company" :placeholder="currentRecord.stages.container.company || '—'">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">物流编号 (从装柜带过来)</label>
+                <input class="form-input" v-model="currentRecord.stages.arrival.trackingNo" :placeholder="currentRecord.stages.container.trackingNo || '—'">
+              </div>
+              <div class="form-group">
+                <label class="form-label">数量 (从装柜带过来)</label>
+                <input type="number" class="form-input" v-model.number="currentRecord.stages.arrival.quantity" :placeholder="currentRecord.stages.container.quantity || 0">
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">输入框 / 说明 + 确认抵达（可增加行）</label>
+              <div v-for="(row, idx) in currentRecord.stages.arrival.rows" :key="'ar-' + idx" class="dynamic-row">
+                <input class="form-input" v-model="row.text" placeholder="说明..." style="flex: 1;">
+                <label class="confirmed-check" v-if="row.confirmed">✓ 已确认</label>
+                <input type="checkbox" v-model="row.confirmed" title="确认抵达">
+                <button class="btn-icon-sm" @click="removeStageRow('arrival', idx)" title="删除">×</button>
+              </div>
+              <button class="btn btn-secondary btn-sm" @click="addStageRow('arrival')">+ 增加行</button>
+            </div>
+            <div class="form-group">
+              <label class="form-label">送货时间</label>
+              <input type="datetime-local" class="form-input" v-model="currentRecord.stages.arrival.deliveryTime">
+            </div>
+          </div>
+        </details>
+
+        <!-- 阶段 4: 安装 (安装人员 + 联系号码) -->
+        <details class="stage-section" data-stage="install" :open="stageOpen.install">
+          <summary>
+            🔨 安装
+            <span class="stage-summary-count" v-if="getStageSummary('install')">{{ getStageSummary('install') }}</span>
+          </summary>
+          <div class="stage-content">
+            <div class="form-group">
+              <label class="form-label">安装日期 (可多选)</label>
+              <div class="date-list">
+                <span v-for="(d, idx) in currentRecord.stages.install.dates" :key="'id-' + idx" class="date-pill">
+                  📅 {{ d }}
+                  <span class="remove" @click="removeStageDate('install', idx)">×</span>
+                </span>
+              </div>
+              <input type="date" class="form-input" @change="addStageDate('install', $event.target.value); $event.target.value=''">
+            </div>
+            <div class="form-group">
+              <label class="form-label">安装人员 (可多人)</label>
+              <div v-for="(inst, idx) in currentRecord.stages.install.installers" :key="'in-' + idx" class="installer-row">
+                <input class="form-input" v-model="inst.name" placeholder="姓名 (例: 张师傅)">
+                <input class="form-input" v-model="inst.phone" placeholder="联系号码 (例: 012-...)">
+                <button class="btn-icon-sm" @click="removeInstaller(idx)" title="删除">×</button>
+              </div>
+              <button class="btn btn-secondary btn-sm" @click="addInstaller">+ 添加安装人员</button>
+            </div>
+          </div>
+        </details>
+
+        <!-- 共享备注 (v2.0) -->
+        <div class="form-section" style="margin-top: 8px;">
+          <div class="form-section-title">📝 备注（4 阶段共用）</div>
+          <textarea class="form-textarea" v-model="currentRecord.notes" rows="3" placeholder="任何阶段的备注都可以写这里..."></textarea>
         </div>
 
         <div style="font-size: 12px; color: var(--subtext); padding: 8px 0;">
           创建: {{ formatDate(currentRecord.createdAt) }} · 更新: {{ formatDate(currentRecord.updatedAt) }}
+          <span v-if="currentRecord.lastSyncedAt"> · 📅 同步: {{ formatDate(currentRecord.lastSyncedAt) }}</span>
         </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-danger" @click="deleteCurrent">🗑 删除</button>
         <button class="btn btn-secondary" @click="printCurrent">🖨 打印</button>
-        <button class="btn btn-secondary" @click="manualSyncCalendar">📅 同步 Calendar</button>
         <button class="btn btn-success" @click="autoProgress">🔄 自动推进</button>
         <button class="btn btn-primary" @click="saveCurrent">💾 保存</button>
       </div>
@@ -966,12 +1157,13 @@ const STAGES = [
   { key: 'install', label: '安装', icon: '🔨' }
 ];
 
+// v2.0 数据模型
 function emptyStages() {
   return {
-    order: { date: '', factory: '', remarks: '' },
-    container: { date: '', company: '', remarks: '' },
-    arrival: { date: '', location: '', remarks: '' },
-    install: { date: '', installer: '', remarks: '' }
+    order:     { dates: [], factory: '', rows: [] },
+    container: { dates: [], factory: '', company: '', trackingNo: '', quantity: 0, rows: [] },
+    arrival:   { dates: [], factory: '', company: '', trackingNo: '', quantity: 0, rows: [], deliveryTime: '' },
+    install:   { dates: [], installers: [] }
   };
 }
 
@@ -981,31 +1173,32 @@ createApp({
     const loading = ref(false);
     const modal = reactive({ add: false, import: false, detail: false });
     const addForm = reactive({
-      projNo: '', salesperson: '', customerPhone: '', salespersonPhone: '',
-      customerAddress: '', stages: emptyStages()
+      projNo: '', customerName: '', customerPhone: '', customerAddress: '',
+      arrivalAddress: '', salesperson: '', salespersonPhone: '',
+      notes: '', stages: emptyStages()
     });
     const importPreview = ref([]);
     const importText = ref('');
+    const importSelected = ref([]);
+    const importTab = ref('cloud');  // 'cloud' or 'local'
+    const cloudLoading = ref(false);
     const currentRecord = ref(null);
-    const activeTab = ref('order');
+    const stageOpen = reactive({ order: false, container: false, arrival: false, install: false });
     const toast = reactive({ show: false, text: '', type: 'success' });
     const stages = STAGES;
     const searchQuery = ref('');
     const dragId = ref(null);
-    const justDragged = ref(false);  // G.1: 拖拽后短暂忽略 click
-    const addingFieldFor = ref(null);
-    const newField = reactive({ name: '', type: 'text', value: '' });
+    const justDragged = ref(false);
 
-    // H: backadmin 配置
     const BACKADMIN_URL = 'https://script.google.com/macros/s/AKfycbzNEE5lMN5nd-lDQ7mA7oog6_dqT-wjuyZE9bkjE28bOdjg6n4iQm7ArWF44cOhlKcj/exec';
     const BACKADMIN_USERS = ['admin', 'test', 'SSD', 'PSD', 'FSD', 'JSD', 'TSD', 'VSD', 'TESD', 'ASD'];
 
-    // 过滤后的记录（按 searchQuery 模糊匹配 5 个核心字段）
+    // ===== Computed =====
     const filteredRecords = computed(() => {
       const q = searchQuery.value.trim().toLowerCase();
       if (!q) return records.value;
       return records.value.filter(r => {
-        const fields = [r.projNo, r.customerPhone, r.customerAddress, r.salesperson, r.salespersonPhone];
+        const fields = [r.projNo, r.customerName, r.customerPhone, r.customerAddress, r.arrivalAddress, r.salesperson, r.salespersonPhone];
         return fields.some(f => f && String(f).toLowerCase().includes(q));
       });
     });
@@ -1016,7 +1209,7 @@ createApp({
       return c;
     });
 
-    // 关键日期统计 (D)
+    // v2.0 keyStats 用 dates 数组
     const keyStats = computed(() => {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -1024,19 +1217,28 @@ createApp({
       weekFromNow.setDate(weekFromNow.getDate() + 7);
       let todayContainer = 0, weekInstall = 0, overdue = 0;
       filteredRecords.value.forEach(r => {
-        if (r.stages.container && r.stages.container.date) {
-          const d = new Date(r.stages.container.date + 'T00:00:00');
-          if (!isNaN(d.getTime()) && d.getTime() === today.getTime()) todayContainer++;
+        const s = r.stages || {};
+        if (s.container && Array.isArray(s.container.dates)) {
+          s.container.dates.forEach(d => {
+            const dt = new Date(d + 'T00:00:00');
+            if (!isNaN(dt.getTime()) && dt.getTime() === today.getTime()) todayContainer++;
+          });
         }
-        if (r.stages.install && r.stages.install.date) {
-          const d = new Date(r.stages.install.date + 'T00:00:00');
-          if (!isNaN(d.getTime()) && d >= today && d < weekFromNow) weekInstall++;
+        if (s.install && Array.isArray(s.install.dates)) {
+          s.install.dates.forEach(d => {
+            const dt = new Date(d + 'T00:00:00');
+            if (!isNaN(dt.getTime()) && dt >= today && dt < weekFromNow) weekInstall++;
+          });
         }
-        if (r.stage !== 'install' && r.stages[r.stage] && r.stages[r.stage].date) {
-          const d = new Date(r.stages[r.stage].date + 'T00:00:00');
-          if (!isNaN(d.getTime())) {
-            const daysAgo = (today - d) / 86400000;
-            if (daysAgo > 14) overdue++;
+        if (r.stage !== 'install') {
+          const currentStage = s[r.stage];
+          if (currentStage && Array.isArray(currentStage.dates) && currentStage.dates.length > 0) {
+            const latestDate = currentStage.dates.slice().sort().pop();
+            const d = new Date(latestDate + 'T00:00:00');
+            if (!isNaN(d.getTime())) {
+              const daysAgo = (today - d) / 86400000;
+              if (daysAgo > 14) overdue++;
+            }
           }
         }
       });
@@ -1046,13 +1248,13 @@ createApp({
     const recordsByStage = computed(() => {
       const g = { order: [], container: [], arrival: [], install: [] };
       filteredRecords.value.forEach(r => { if (g[r.stage]) g[r.stage].push(r); });
-      // Sort: items with earlier next-milestone date first
       Object.keys(g).forEach(k => {
         g[k].sort((a, b) => (a.updatedAt || '').localeCompare(b.updatedAt || ''));
       });
       return g;
     });
 
+    // ===== Utilities =====
     function showToast(text, type = 'success', ms = 2500) {
       toast.text = text;
       toast.type = type;
@@ -1083,94 +1285,90 @@ createApp({
       }
     }
 
-    function showAdd() {
-      Object.keys(addForm).forEach(k => {
-        if (k === 'stages') {
-          addForm.stages = emptyStages();
-        } else {
-          addForm[k] = '';
-        }
-      });
-      modal.add = true;
+    function hasAnyDate(r, stageKey) {
+      const s = r.stages && r.stages[stageKey];
+      if (!s) return false;
+      if (Array.isArray(s.dates) && s.dates.length > 0) return true;
+      return false;
     }
 
-    async function submitAdd() {
-      const payload = { ...addForm, stages: JSON.stringify(addForm.stages) };
-      const r = await callGAS({ action: 'addManualRecord', ...payload });
-      if (r.success) {
-        showToast('✓ 已保存: ' + r.record.projNo);
-        modal.add = false;
-        await loadRecords();
-      } else {
-        showToast('保存失败: ' + (r.error || '未知错误'), 'error');
-      }
+    function getStageDateSummary(r, stageKey) {
+      const s = r.stages && r.stages[stageKey];
+      if (!s || !Array.isArray(s.dates) || s.dates.length === 0) return '';
+      return s.dates.length === 1 ? s.dates[0] : s.dates.length + ' 个日期';
     }
 
-    function showImport() {
-      importPreview.value = [];
-      importText.value = '';
-      const fileInput = document.getElementById('jsonFile');
-      if (fileInput) fileInput.value = '';
-      modal.import = true;
+    function isOverdue(r) {
+      if (r.stage === 'install') return false;
+      const s = r.stages && r.stages[r.stage];
+      if (!s || !Array.isArray(s.dates) || s.dates.length === 0) return false;
+      const today = new Date();
+      const latestDate = s.dates.slice().sort().pop();
+      const d = new Date(latestDate + 'T00:00:00');
+      if (isNaN(d.getTime())) return false;
+      return (today - d) / 86400000 > 14;
     }
 
-    // 从文件读取 JSON
-    function handleJsonFile(e) {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        importText.value = ev.target.result;
-        parseImportText();
-      };
-      reader.onerror = () => showToast('文件读取失败', 'error');
-      reader.readAsText(file);
+    // ===== Stage section helpers (v2.0) =====
+    function getStageSummary(stageKey) {
+      const r = currentRecord.value;
+      if (!r) return '';
+      const s = r.stages && r.stages[stageKey];
+      if (!s) return '';
+      const parts = [];
+      if (Array.isArray(s.dates) && s.dates.length) parts.push('📅 ' + s.dates.length);
+      if (s.factory) parts.push('🏭');
+      if (s.company) parts.push('🚚 ' + s.company);
+      if (s.trackingNo) parts.push('#' + s.trackingNo);
+      if (s.quantity) parts.push('×' + s.quantity);
+      if (s.deliveryTime) parts.push('⏰');
+      if (Array.isArray(s.rows) && s.rows.length) parts.push('📝 ' + s.rows.length);
+      if (Array.isArray(s.installers) && s.installers.length) parts.push('👷 ' + s.installers.length);
+      return parts.join(' ');
     }
 
-    // 解析 importText 为 importPreview
-    function parseImportText() {
-      const text = (importText.value || '').trim();
-      if (!text) {
-        importPreview.value = [];
-        return;
-      }
-      try {
-        const data = JSON.parse(text);
-        const arr = Array.isArray(data) ? data : (data.records ? data.records : [data]);
-        importPreview.value = arr.map(r => ({
-          projNo: String(r.projNo || r.proj_no || '').trim(),
-          salesperson: String(r.salesperson || '').trim(),
-          customerPhone: String(r.customerPhone || r.customer_phone || r.phone || '').trim(),
-          salespersonPhone: String(r.salespersonPhone || r.salesperson_phone || '').trim(),
-          customerAddress: String(r.customerAddress || r.customer_address || r.address || '').trim()
-        }));
-        showToast(`已解析 ${importPreview.value.length} 条`, 'success');
-      } catch (err) {
-        importPreview.value = [];
-        showToast('JSON 解析失败: ' + err.message, 'error');
-      }
+    function addStageDate(stageKey, date) {
+      if (!date) return;
+      const s = currentRecord.value.stages[stageKey];
+      if (!Array.isArray(s.dates)) s.dates = [];
+      if (s.dates.indexOf(date) === -1) s.dates.push(date);
+      s.dates.sort();
     }
 
-    async function submitImport() {
-      const r = await callGAS({ action: 'importRecords', records: JSON.stringify(importPreview.value) });
-      if (r.success) {
-        const results = r.results || { success: 0, failed: 0 };
-        showToast(`✓ 导入完成: ${results.success} 成功${results.failed ? `, ${results.failed} 失败` : ''}`);
-        modal.import = false;
-        await loadRecords();
-      } else {
-        showToast('导入失败: ' + (r.error || '未知错误'), 'error');
-      }
+    function removeStageDate(stageKey, idx) {
+      currentRecord.value.stages[stageKey].dates.splice(idx, 1);
     }
 
+    function addStageRow(stageKey) {
+      const s = currentRecord.value.stages[stageKey];
+      if (!Array.isArray(s.rows)) s.rows = [];
+      s.rows.push({ text: '', confirmed: false });
+    }
+
+    function removeStageRow(stageKey, idx) {
+      currentRecord.value.stages[stageKey].rows.splice(idx, 1);
+    }
+
+    function addInstaller() {
+      const s = currentRecord.value.stages.install;
+      if (!Array.isArray(s.installers)) s.installers = [];
+      s.installers.push({ name: '', phone: '' });
+    }
+
+    function removeInstaller(idx) {
+      currentRecord.value.stages.install.installers.splice(idx, 1);
+    }
+
+    // ===== Open detail modal =====
     function openDetail(record) {
-      // 拖拽后 200ms 内阻止 click (G.1)
-      if (justDragged.value) {
-        justDragged.value = false;
-        return;
-      }
+      if (justDragged.value) { justDragged.value = false; return; }
       currentRecord.value = JSON.parse(JSON.stringify(record));
-      activeTab.value = record.stage || 'order';
+      // 默认折叠；当前阶段的 section 自动展开
+      const sk = currentRecord.value.stage || 'order';
+      stageOpen.order = (sk === 'order');
+      stageOpen.container = (sk === 'container');
+      stageOpen.arrival = (sk === 'arrival');
+      stageOpen.install = (sk === 'install');
       modal.detail = true;
     }
 
@@ -1179,53 +1377,40 @@ createApp({
       currentRecord.value = null;
     }
 
+    // ===== Auto progress (v2.0) =====
     function autoProgress() {
       const r = currentRecord.value;
       if (!r) return;
-      // Most-advanced stage with a date wins
-      if (r.stages.install && r.stages.install.date) r.stage = 'install';
-      else if (r.stages.arrival && r.stages.arrival.date) r.stage = 'arrival';
-      else if (r.stages.container && r.stages.container.date) r.stage = 'container';
+      const s = r.stages;
+      if (s.install && s.install.dates && s.install.dates.length > 0) r.stage = 'install';
+      else if (s.arrival && s.arrival.dates && s.arrival.dates.length > 0) r.stage = 'arrival';
+      else if (s.container && s.container.dates && s.container.dates.length > 0) r.stage = 'container';
       else r.stage = 'order';
       showToast('✓ 已自动推进到: ' + stages.find(s => s.key === r.stage).label);
     }
 
+    // ===== Save =====
     async function saveCurrent() {
       const r = currentRecord.value;
       if (!r) return;
-      // Auto-progress on save
-      if (r.stages.install && r.stages.install.date) r.stage = 'install';
-      else if (r.stages.arrival && r.stages.arrival.date) r.stage = 'arrival';
-      else if (r.stages.container && r.stages.container.date) r.stage = 'container';
-      const updates = JSON.stringify({
+      // auto-progress before save
+      autoProgress();
+      const updates = {
         projNo: r.projNo,
+        customerName: r.customerName,
         customerPhone: r.customerPhone,
         customerAddress: r.customerAddress,
+        arrivalAddress: r.arrivalAddress,
         salesperson: r.salesperson,
         salespersonPhone: r.salespersonPhone,
         stage: r.stage,
+        notes: r.notes,
         stages: r.stages
-      });
-      const result = await callGAS({ action: 'updateRecord', id: r.id, updates });
+      };
+      const result = await callGAS({ action: 'updateRecord', id: r.id, updates: JSON.stringify(updates) });
       if (result.success) {
         showToast('✓ 已保存');
-        // 显示 Calendar 同步结果 (auto-sync 在 updateRecord 里调用)
-        const cs = result.calendarSync;
-        if (cs) {
-          if (cs.success) {
-            const msg = cs.action === 'created' ? 'Calendar 已创建' :
-                        cs.action === 'updated' ? 'Calendar 已更新' :
-                        cs.action === 'deleted' ? 'Calendar event 已删除' :
-                        'Calendar 无变化';
-            showToast('📅 ' + msg, 'success', 3500);
-          } else if (cs.error) {
-            showToast('📅 Calendar 同步失败: ' + cs.error, 'error', 4000);
-          }
-        }
-        // Update local record with the synced data
-        if (result.record) {
-          currentRecord.value = JSON.parse(JSON.stringify(result.record));
-        }
+        if (result.record) currentRecord.value = JSON.parse(JSON.stringify(result.record));
         modal.detail = false;
         await loadRecords();
       } else {
@@ -1233,28 +1418,7 @@ createApp({
       }
     }
 
-    async function manualSyncCalendar() {
-      const r = currentRecord.value;
-      if (!r) return;
-      showToast('📅 同步中...', 'success', 1500);
-      const result = await callGAS({ action: 'syncToCalendar', id: r.id });
-      if (result.success) {
-        const msg = result.action === 'created' ? '已创建' :
-                    result.action === 'updated' ? '已更新' :
-                    result.action === 'deleted' ? '已删除' :
-                    result.action === 'none' ? '无变化 (没填日期)' :
-                    '完成';
-        showToast('📅 Calendar ' + msg, 'success', 3000);
-        // Reload to get updated lastSyncedAt
-        const fresh = await callGAS({ action: 'getRecord', id: r.id });
-        if (fresh.success && fresh.record) {
-          currentRecord.value = JSON.parse(JSON.stringify(fresh.record));
-        }
-      } else {
-        showToast('📅 同步失败: ' + (result.error || '未知错误'), 'error', 4000);
-      }
-    }
-
+    // ===== Delete =====
     async function deleteCurrent() {
       const r = currentRecord.value;
       if (!r) return;
@@ -1269,272 +1433,165 @@ createApp({
       }
     }
 
-    function isOverdue(r) {
-      // Overdue = install date passed but not done? Or simpler: arrival date passed and no install date?
-      // For v1, simple: if the record's current stage has a date more than 7 days ago and no next stage date
-      if (r.stage === 'install') return false; // Done
-      const today = new Date();
-      const stageOrder = ['order', 'container', 'arrival', 'install'];
-      const idx = stageOrder.indexOf(r.stage);
-      if (idx < 0 || idx === 3) return false;
-      // Check if next stage date is filled (then move on)
-      // For overdue, check if CURRENT stage's date is more than 14 days ago
-      const currentStage = r.stages[r.stage];
-      if (!currentStage || !currentStage.date) return false;
-      const stageDate = new Date(currentStage.date);
-      const daysAgo = (today - stageDate) / (1000 * 60 * 60 * 24);
-      return daysAgo > 14;
-    }
-
-    function truncate(s, n) {
-      if (!s) return '';
-      return s.length > n ? s.substring(0, n) + '...' : s;
-    }
-
-    function formatDate(s) {
-      if (!s) return '—';
-      try { return new Date(s).toLocaleString('zh-CN'); } catch (e) { return s; }
-    }
-
-    function escapeHtml(s) {
-      return String(s == null ? '' : s)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-    }
-
-    function highlight(text, query) {
-      const safe = escapeHtml(text || '');
-      const q = (query || '').trim();
-      if (!q) return safe;
-      const safeQ = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const regex = new RegExp('(' + safeQ + ')', 'gi');
-      return safe.replace(regex, '<mark>$1</mark>');
-    }
-
-    // ===== Drag & Drop (C) =====
-    function onDragStart(e, r) {
-      dragId.value = r.id;
-      e.dataTransfer.effectAllowed = 'move';
-      try { e.dataTransfer.setData('text/plain', r.id); } catch (err) {}
-    }
-    function onDragEnd() {
-      dragId.value = null;
-      justDragged.value = true;  // G.1: 阻止紧随的 click
-      setTimeout(() => { justDragged.value = false; }, 200);
-      // 清除所有 column 的 drag-over class
-      document.querySelectorAll('.column.drag-over').forEach(el => el.classList.remove('drag-over'));
-    }
-    function onDragOver(e) {
-      e.dataTransfer.dropEffect = 'move';
-      // 高亮当前 column
-      const col = e.currentTarget;
-      if (col && !col.classList.contains('drag-over')) {
-        document.querySelectorAll('.column.drag-over').forEach(el => el.classList.remove('drag-over'));
-        col.classList.add('drag-over');
+    // ===== Sync all to Calendar =====
+    async function syncAllToCalendar() {
+      showToast('📅 开始同步全部到 Calendar...', 'success', 2000);
+      const result = await callGAS({ action: 'syncAllToCalendar' });
+      if (result.success && result.results) {
+        const r = result.results;
+        showToast(`📅 同步完成: ${r.success}/${r.total} 成功${r.failed ? `, ${r.failed} 失败` : ''}`, 'success', 4000);
+      } else {
+        showToast('同步失败: ' + (result.error || '未知错误'), 'error', 5000);
       }
     }
-    function onDragLeave(e) {
-      const col = e.currentTarget;
-      // 防止子元素触发的 leave
-      if (e.relatedTarget && col.contains(e.relatedTarget)) return;
-      if (col) col.classList.remove('drag-over');
+
+    // ===== Add record =====
+    function showAdd() {
+      Object.keys(addForm).forEach(k => {
+        if (k === 'stages') {
+          addForm.stages = emptyStages();
+        } else {
+          addForm[k] = '';
+        }
+      });
+      modal.add = true;
     }
-    async function onDrop(e, newStage) {
-      e.preventDefault();
-      const col = e.currentTarget;
-      if (col) col.classList.remove('drag-over');
-      const id = dragId.value || e.dataTransfer.getData('text/plain');
-      dragId.value = null;
-      if (!id) return;
-      const rec = records.value.find(r => r.id === id);
-      if (!rec || rec.stage === newStage) return;
-      const oldStage = rec.stage;
-      rec.stage = newStage;
-      // 保存
-      const updates = JSON.stringify({ stage: newStage });
-      const result = await callGAS({ action: 'updateRecord', id: id, updates });
-      if (result.success) {
-        const stageLabel = stages.find(s => s.key === newStage).label;
-        showToast(`✓ 已移到「${stageLabel}」`, 'success', 2000);
+
+    async function submitAdd() {
+      const payload = {
+        projNo: addForm.projNo,
+        customerName: addForm.customerName,
+        customerPhone: addForm.customerPhone,
+        customerAddress: addForm.customerAddress,
+        arrivalAddress: addForm.arrivalAddress,
+        salesperson: addForm.salesperson,
+        salespersonPhone: addForm.salespersonPhone,
+        notes: addForm.notes,
+        stages: JSON.stringify(addForm.stages)
+      };
+      const r = await callGAS({ action: 'addManualRecord', ...payload });
+      if (r.success) {
+        showToast('✓ 已保存: ' + r.record.projNo);
+        modal.add = false;
         await loadRecords();
       } else {
-        rec.stage = oldStage;
-        showToast('移动失败: ' + (result.error || '未知'), 'error');
+        showToast('保存失败: ' + (r.error || '未知错误'), 'error');
       }
     }
 
-    // ===== 从 backadmin 导入 (H) =====
-    async function importFromBackadmin() {
-      showToast('📡 正在从 backadmin 拉数据...', 'success', 2000);
+    // ===== Import (v2.0: cloud or local) =====
+    function showImport() {
+      importPreview.value = [];
+      importSelected.value = [];
+      importText.value = '';
+      importTab.value = 'cloud';
+      cloudLoading.value = false;
+      const fileInput = document.getElementById('jsonFile');
+      if (fileInput) fileInput.value = '';
+      modal.import = true;
+    }
+
+    function getSelectedCount() {
+      return importSelected.value.filter(Boolean).length;
+    }
+
+    // 从 backadmin 拉 ordered quote
+    async function fetchFromBackadmin() {
+      cloudLoading.value = true;
+      importPreview.value = [];
+      importSelected.value = [];
       const existingProjNos = new Set(records.value.map(r => r.projNo).filter(Boolean));
       const collected = [];
-      const errors = [];
-
       for (const username of BACKADMIN_USERS) {
         try {
           const url = BACKADMIN_URL + '?action=getUserStatistics&username=' + encodeURIComponent(username);
-          const resp = await fetch(url, { method: 'GET' });
-          if (!resp.ok) { errors.push(username + ': HTTP ' + resp.status); continue; }
+          const resp = await fetch(url);
+          if (!resp.ok) continue;
           const data = await resp.json();
           if (!data.success || !Array.isArray(data.quotes)) continue;
           data.quotes.forEach(q => {
-            // 过滤：orderedAt 有值 + lockedCustomer=true
             if (q.orderedAt && q.lockedCustomer && q.projNo && !existingProjNos.has(q.projNo)) {
               collected.push({
                 projNo: q.projNo,
-                salesperson: q.subSalesperson || q.measurementEngineer || q.designerName || username,
-                customerPhone: '',  // backadmin 没存电话
+                customerName: q.customerName || '',
+                customerPhone: '',
                 customerAddress: q.customerAddress || '',
-                orderedAt: q.orderedAt,
-                source: 'backadmin'
+                arrivalAddress: '',
+                salesperson: q.subSalesperson || q.measurementEngineer || q.designerName || username,
+                salespersonPhone: '',
+                source: 'backadmin',
+                orderedAt: q.orderedAt
               });
             }
           });
-        } catch (err) {
-          errors.push(username + ': ' + err.message);
-        }
+        } catch (err) { /* skip */ }
       }
-
+      importPreview.value = collected;
+      importSelected.value = collected.map(() => true);
+      cloudLoading.value = false;
       if (collected.length === 0) {
-        showToast('📡 没有新的 ordered quote 要导入' + (errors.length ? '（' + errors.length + ' 个错误）' : ''), 'warn', 4000);
-        if (errors.length) console.warn('Backadmin import errors:', errors);
-        return;
+        showToast('📡 没有新的 ordered quote', 'warn');
+      } else {
+        showToast(`📡 找到 ${collected.length} 条 ordered quote`, 'success');
       }
+    }
 
-      // 批量导入
-      const r = await callGAS({ action: 'importRecords', records: JSON.stringify(collected) });
+    function handleJsonFile(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        importText.value = ev.target.result;
+        parseImportText();
+      };
+      reader.readAsText(file);
+    }
+
+    function parseImportText() {
+      const text = (importText.value || '').trim();
+      if (!text) { importPreview.value = []; return; }
+      try {
+        const data = JSON.parse(text);
+        const arr = Array.isArray(data) ? data : (data.records ? data.records : [data]);
+        importPreview.value = arr.map(r => ({
+          projNo: String(r.projNo || r.proj_no || '').trim(),
+          customerName: String(r.customerName || r.customer_name || '').trim(),
+          customerPhone: String(r.customerPhone || r.customer_phone || r.phone || '').trim(),
+          customerAddress: String(r.customerAddress || r.customer_address || r.address || '').trim(),
+          arrivalAddress: String(r.arrivalAddress || r.arrival_address || '').trim(),
+          salesperson: String(r.salesperson || '').trim(),
+          salespersonPhone: String(r.salespersonPhone || r.salesperson_phone || '').trim()
+        }));
+        importSelected.value = importPreview.value.map(() => true);
+        showToast(`已解析 ${importPreview.value.length} 条`, 'success');
+      } catch (err) {
+        importPreview.value = [];
+        showToast('JSON 解析失败: ' + err.message, 'error');
+      }
+    }
+
+    async function submitImport() {
+      const selected = importPreview.value.filter((_, idx) => importSelected.value[idx]);
+      if (selected.length === 0) { showToast('请勾选至少一条', 'warn'); return; }
+      const r = await callGAS({ action: 'importRecords', records: JSON.stringify(selected) });
       if (r.success) {
         const results = r.results || { success: 0, failed: 0 };
-        showToast(`✓ 从 backadmin 导入: ${results.success} 成功${results.failed ? `, ${results.failed} 失败` : ''}` + (errors.length ? ` (拉取 ${errors.length} 错误)` : ''), 'success', 4000);
+        showToast(`✓ 导入完成: ${results.success} 成功${results.failed ? `, ${results.failed} 失败` : ''}`);
+        modal.import = false;
         await loadRecords();
       } else {
-        showToast('导入失败: ' + (r.error || '未知错误'), 'error', 5000);
+        showToast('导入失败: ' + (r.error || '未知错误'), 'error');
       }
     }
 
-    // ===== Excel 导出 (E + G.2) =====
-    function exportExcel() {
-      if (records.value.length === 0) {
-        showToast('没有记录可导出', 'warn');
-        return;
-      }
-      // G.2: 扫描所有 records 收集 unique 的自定义字段 (按阶段)
-      // 格式: { 'order__订单号': '订单号', 'container__柜号': '柜号' }
-      const customCols = {}; // key -> display name
-      records.value.forEach(r => {
-        const s = r.stages || {};
-        Object.keys(s).forEach(stageKey => {
-          const stageData = s[stageKey];
-          if (stageData && Array.isArray(stageData.customFields)) {
-            stageData.customFields.forEach(f => {
-              if (f && f.name) {
-                const k = stageKey + '__' + f.name;
-                if (!customCols[k]) customCols[k] = f.name;
-              }
-            });
-          }
-        });
-      });
-      // 表头映射: 'order__订单号' → '下单·订单号'
-      const stageNameMap = { order: '下单', container: '装柜', arrival: '抵达', install: '安装' };
-      const customHeaders = {};
-      Object.keys(customCols).forEach(k => {
-        const [stageKey, ...nameParts] = k.split('__');
-        const fieldName = nameParts.join('__');
-        customHeaders[k] = (stageNameMap[stageKey] || stageKey) + '·' + fieldName;
-      });
-
-      const rows = records.value.map(r => {
-        const s = r.stages || {};
-        const row = {
-          '工程编号': r.projNo || '',
-          '当前阶段': stages.find(st => st.key === r.stage).label,
-          '业务员': r.salesperson || '',
-          '业务员电话': r.salespersonPhone || '',
-          '客户电话': r.customerPhone || '',
-          '客户地址': r.customerAddress || '',
-          '下单日期': (s.order && s.order.date) || '',
-          '下单工厂': (s.order && s.order.factory) || '',
-          '下单备注': (s.order && s.order.remarks) || '',
-          '装柜日期': (s.container && s.container.date) || '',
-          '装柜公司': (s.container && s.container.company) || '',
-          '装柜备注': (s.container && s.container.remarks) || '',
-          '抵达日期': (s.arrival && s.arrival.date) || '',
-          '抵达地点': (s.arrival && s.arrival.location) || '',
-          '抵达备注': (s.arrival && s.arrival.remarks) || '',
-          '安装日期': (s.install && s.install.date) || '',
-          '安装人员': (s.install && s.install.installer) || '',
-          '安装备注': (s.install && s.install.remarks) || ''
-        };
-        // 添加自定义字段列
-        Object.keys(customCols).forEach(k => {
-          const [stageKey, ...nameParts] = k.split('__');
-          const fieldName = nameParts.join('__');
-          const stageData = s[stageKey];
-          const field = stageData && stageData.customFields && stageData.customFields.find(f => f.name === fieldName);
-          row[customHeaders[k]] = (field && field.value) || '';
-        });
-        return row;
-      });
-      try {
-        const ws = XLSX.utils.json_to_sheet(rows);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, '工程记录');
-        const stamp = new Date().toISOString().slice(0, 10);
-        XLSX.writeFile(wb, 'squirrelinstall_' + stamp + '.xlsx');
-        const customColCount = Object.keys(customCols).length;
-        showToast('✓ 已导出 ' + rows.length + ' 条' + (customColCount ? ' (含 ' + customColCount + ' 个自定义字段)' : ''), 'success', 3000);
-      } catch (err) {
-        showToast('导出失败: ' + err.message, 'error');
-      }
-    }
-
-    // ===== 自定义栏目 (B) =====
-    function startAddField(stageKey) {
-      // 确保该 stage 有 customFields 数组
-      if (!currentRecord.value.stages[stageKey].customFields) {
-        currentRecord.value.stages[stageKey].customFields = [];
-      }
-      addingFieldFor.value = stageKey;
-      newField.name = '';
-      newField.type = 'text';
-      newField.value = '';
-    }
-    function cancelAddField() {
-      addingFieldFor.value = null;
-    }
-    function addCustomField(stageKey) {
-      const name = (newField.name || '').trim();
-      if (!name) {
-        showToast('请输入字段名', 'warn');
-        return;
-      }
-      const cf = { name: name, type: newField.type, value: newField.value || '' };
-      if (!currentRecord.value.stages[stageKey].customFields) {
-        currentRecord.value.stages[stageKey].customFields = [];
-      }
-      currentRecord.value.stages[stageKey].customFields.push(cf);
-      addingFieldFor.value = null;
-      newField.name = '';
-      newField.value = '';
-    }
-    function removeCustomField(stageKey, idx) {
-      if (!confirm('删除自定义字段？')) return;
-      currentRecord.value.stages[stageKey].customFields.splice(idx, 1);
-    }
-
-    // ===== 单条打印 (F) =====
+    // ===== Print =====
     function printCurrent() {
       const r = currentRecord.value;
       if (!r) return;
-      const w = window.open('', '_blank');
       const s = r.stages || {};
       const stageLabel = stages.find(st => st.key === r.stage).label;
-      const html = `
-<!DOCTYPE html>
+      const fmtDates = (arr) => Array.isArray(arr) && arr.length ? arr.join(', ') : '—';
+      const html = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>${escapeHtml(r.projNo || '')} - 安装单</title>
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 30px; color: #050505; }
@@ -1549,57 +1606,164 @@ createApp({
   th, td { border: 1px solid #e4e6eb; padding: 8px; text-align: left; font-size: 13px; }
   th { background: #f7f8fa; font-weight: 600; }
   @media print { body { padding: 0; } }
-</style>
-</head><body>
+</style></head><body>
 <div class="print-area">
   <h1>📋 ${escapeHtml(r.projNo || '(无编号)')}</h1>
   <div class="sub">当前阶段: ${stageLabel} · 业务员: ${escapeHtml(r.salesperson || '—')}</div>
-
   <div class="section">
     <div class="section-title">👤 客户信息</div>
+    <div class="row"><div class="label">客户名字</div><div class="value">${escapeHtml(r.customerName || '—')}</div></div>
     <div class="row"><div class="label">客户电话</div><div class="value">${escapeHtml(r.customerPhone || '—')}</div></div>
     <div class="row"><div class="label">客户地址</div><div class="value">${escapeHtml(r.customerAddress || '—')}</div></div>
+    <div class="row"><div class="label">抵达地址</div><div class="value">${escapeHtml(r.arrivalAddress || '—')}</div></div>
     <div class="row"><div class="label">业务员</div><div class="value">${escapeHtml(r.salesperson || '—')} (${escapeHtml(r.salespersonPhone || '—')})</div></div>
   </div>
-
   <div class="section">
     <div class="section-title">📅 4 阶段时间表</div>
     <table>
-      <tr><th>阶段</th><th>日期</th><th>详情</th><th>备注</th></tr>
-      <tr><td>🛒 下单</td><td>${escapeHtml((s.order && s.order.date) || '—')}</td><td>${escapeHtml((s.order && s.order.factory) || '—')}</td><td>${escapeHtml((s.order && s.order.remarks) || '—')}</td></tr>
-      <tr><td>📦 装柜</td><td>${escapeHtml((s.container && s.container.date) || '—')}</td><td>${escapeHtml((s.container && s.container.company) || '—')}</td><td>${escapeHtml((s.container && s.container.remarks) || '—')}</td></tr>
-      <tr><td>🚚 抵达</td><td>${escapeHtml((s.arrival && s.arrival.date) || '—')}</td><td>${escapeHtml((s.arrival && s.arrival.location) || '—')}</td><td>${escapeHtml((s.arrival && s.arrival.remarks) || '—')}</td></tr>
-      <tr><td>🔨 安装</td><td>${escapeHtml((s.install && s.install.date) || '—')}</td><td>${escapeHtml((s.install && s.install.installer) || '—')}</td><td>${escapeHtml((s.install && s.install.remarks) || '—')}</td></tr>
+      <tr><th>阶段</th><th>日期</th><th>详情</th></tr>
+      <tr><td>🛒 下单</td><td>${fmtDates(s.order && s.order.dates)}</td><td>${escapeHtml((s.order && s.order.factory) || '—')}</td></tr>
+      <tr><td>📦 装柜</td><td>${fmtDates(s.container && s.container.dates)}</td><td>${escapeHtml((s.container && s.container.company) || '—')} | #${escapeHtml((s.container && s.container.trackingNo) || '—')} | 数量: ${(s.container && s.container.quantity) || 0}</td></tr>
+      <tr><td>🚚 抵达</td><td>${fmtDates(s.arrival && s.arrival.dates)}</td><td>送货: ${escapeHtml((s.arrival && s.arrival.deliveryTime) || '—')}</td></tr>
+      <tr><td>🔨 安装</td><td>${fmtDates(s.install && s.install.dates)}</td><td>${(s.install && s.install.installers || []).map(i => i.name + ' (' + (i.phone || '') + ')').join(', ') || '—'}</td></tr>
     </table>
   </div>
-
-  <div style="margin-top: 30px; text-align: center; color: #65676b; font-size: 11px;">
-    Squirrel Install · 打印于 ${new Date().toLocaleString('zh-CN')}
-  </div>
-</div>
-</body></html>`;
+  ${r.notes ? `<div class="section"><div class="section-title">📝 备注</div><div>${escapeHtml(r.notes)}</div></div>` : ''}
+  <div style="margin-top: 30px; text-align: center; color: #65676b; font-size: 11px;">Squirrel Install · 打印于 ${new Date().toLocaleString('zh-CN')}</div>
+</div></body></html>`;
+      const w = window.open('', '_blank');
       w.document.write(html);
       w.document.close();
       setTimeout(() => { w.print(); }, 300);
     }
 
+    // ===== Excel export (v2.0) =====
+    function exportExcel() {
+      if (records.value.length === 0) { showToast('没有记录可导出', 'warn'); return; }
+      const fmtDates = (arr) => Array.isArray(arr) ? arr.join(', ') : '';
+      const rows = records.value.map(r => {
+        const s = r.stages || {};
+        return {
+          '工程编号': r.projNo || '',
+          '当前阶段': stages.find(st => st.key === r.stage).label,
+          '客户名字': r.customerName || '',
+          '客户电话': r.customerPhone || '',
+          '客户地址': r.customerAddress || '',
+          '抵达地址': r.arrivalAddress || '',
+          '业务员': r.salesperson || '',
+          '业务员电话': r.salespersonPhone || '',
+          '下单日期': fmtDates(s.order && s.order.dates),
+          '下单工厂': (s.order && s.order.factory) || '',
+          '装柜日期': fmtDates(s.container && s.container.dates),
+          '装柜公司': (s.container && s.container.company) || '',
+          '物流编号': (s.container && s.container.trackingNo) || '',
+          '数量': (s.container && s.container.quantity) || 0,
+          '抵达日期': fmtDates(s.arrival && s.arrival.dates),
+          '送货时间': (s.arrival && s.arrival.deliveryTime) || '',
+          '安装日期': fmtDates(s.install && s.install.dates),
+          '安装人员': (s.install && s.install.installers || []).map(i => i.name + (i.phone ? ' (' + i.phone + ')' : '')).join('; '),
+          '备注': r.notes || '',
+          '创建时间': r.createdAt || '',
+          '更新时间': r.updatedAt || ''
+        };
+      });
+      try {
+        const ws = XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, '工程记录');
+        const stamp = new Date().toISOString().slice(0, 10);
+        XLSX.writeFile(wb, 'squirrelinstall_' + stamp + '.xlsx');
+        showToast('✓ 已导出 ' + rows.length + ' 条', 'success', 3000);
+      } catch (err) {
+        showToast('导出失败: ' + err.message, 'error');
+      }
+    }
+
+    // ===== Drag & Drop =====
+    function onDragStart(e, r) {
+      dragId.value = r.id;
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', r.id); } catch (err) {}
+    }
+    function onDragEnd() {
+      dragId.value = null;
+      justDragged.value = true;
+      setTimeout(() => { justDragged.value = false; }, 200);
+      document.querySelectorAll('.column.drag-over').forEach(el => el.classList.remove('drag-over'));
+    }
+    function onDragOver(e) {
+      e.dataTransfer.dropEffect = 'move';
+      const col = e.currentTarget;
+      if (col && !col.classList.contains('drag-over')) {
+        document.querySelectorAll('.column.drag-over').forEach(el => el.classList.remove('drag-over'));
+        col.classList.add('drag-over');
+      }
+    }
+    function onDragLeave(e) {
+      const col = e.currentTarget;
+      if (e.relatedTarget && col.contains(e.relatedTarget)) return;
+      if (col) col.classList.remove('drag-over');
+    }
+    async function onDrop(e, newStage) {
+      e.preventDefault();
+      const col = e.currentTarget;
+      if (col) col.classList.remove('drag-over');
+      const id = dragId.value || e.dataTransfer.getData('text/plain');
+      dragId.value = null;
+      if (!id) return;
+      const rec = records.value.find(r => r.id === id);
+      if (!rec || rec.stage === newStage) return;
+      const oldStage = rec.stage;
+      rec.stage = newStage;
+      const updates = JSON.stringify({ stage: newStage });
+      const result = await callGAS({ action: 'updateRecord', id: id, updates });
+      if (result.success) {
+        const stageLabel = stages.find(s => s.key === newStage).label;
+        showToast(`✓ 已移到「${stageLabel}」`, 'success', 2000);
+        await loadRecords();
+      } else {
+        rec.stage = oldStage;
+        showToast('移动失败: ' + (result.error || '未知'), 'error');
+      }
+    }
+
+    // ===== Search highlight =====
+    function escapeHtml(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+    function highlight(text, query) {
+      const safe = escapeHtml(text || '');
+      const q = (query || '').trim();
+      if (!q) return safe;
+      const safeQ = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp('(' + safeQ + ')', 'gi');
+      return safe.replace(regex, '<mark>$1</mark>');
+    }
+    function truncate(s, n) {
+      if (!s) return '';
+      return s.length > n ? s.substring(0, n) + '...' : s;
+    }
+    function formatDate(s) {
+      if (!s) return '—';
+      try { return new Date(s).toLocaleString('zh-CN'); } catch (e) { return s; }
+    }
+
     onMounted(() => loadRecords());
 
     return {
-      records, loading, modal, addForm, importPreview, importText,
-      currentRecord, activeTab, toast, stages, counts, recordsByStage, keyStats,
+      records, loading, modal, addForm, importPreview, importText, importSelected, importTab, cloudLoading,
+      currentRecord, stageOpen, toast, stages, counts, recordsByStage, keyStats,
       searchQuery, filteredRecords, dragId, justDragged,
-      addingFieldFor, newField,
       showAdd, showImport, openDetail, closeDetail,
-      submitAdd, submitImport, saveCurrent, deleteCurrent, autoProgress, manualSyncCalendar,
-      printCurrent, exportExcel, importFromBackadmin,
+      submitAdd, submitImport, saveCurrent, deleteCurrent, autoProgress,
+      printCurrent, exportExcel, syncAllToCalendar, fetchFromBackadmin, getSelectedCount,
       handleJsonFile, parseImportText,
-      startAddField, cancelAddField, addCustomField, removeCustomField,
+      addStageDate, removeStageDate, addStageRow, removeStageRow,
+      addInstaller, removeInstaller, getStageSummary, hasAnyDate, getStageDateSummary,
       onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop,
       loadRecords, isOverdue, truncate, formatDate, highlight
     };
   }
 }).mount('#app');
-</script>
-</body>
-</html>
