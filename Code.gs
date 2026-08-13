@@ -19,7 +19,7 @@
 // ===== 配置 =====
 const RECORDS_FOLDER_NAME = 'SquirrelInstall_Records';
 const CALENDAR_ID = 'squirreldesigner9068@gmail.com';
-const VERSION = 'v1.6';
+const VERSION = 'v1.7';
 
 // ===== 入口 =====
 function doGet(e) { return handleRequest(e); }
@@ -333,6 +333,9 @@ function importRecords(params) {
         createdAt: now,
         updatedAt: now
       };
+      // H: 来源追溯（从 backadmin 导入时记录）
+      if (r.source) record.source = String(r.source).trim();
+      if (r.orderedAt) record.backadminOrderedAt = String(r.orderedAt).trim();
       if (!record.projNo) {
         results.failed++;
         results.errors.push('第 ' + (i+1) + ' 条: 工程编号为空');

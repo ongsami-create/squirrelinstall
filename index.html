@@ -532,6 +532,7 @@
     <div class="actions">
       <button class="btn btn-secondary" @click="exportExcel" title="导出全部为 Excel">⬇ Excel</button>
       <button class="btn btn-secondary" @click="showImport">📥 导入 JSON</button>
+      <button class="btn btn-secondary" @click="importFromBackadmin" title="从 backadmin 拉已下单的 quote">📡 从 backadmin</button>
       <button class="btn btn-primary" @click="showAdd">+ 手动补单</button>
       <button class="btn-icon" @click="loadRecords" title="刷新">🔄</button>
     </div>
@@ -992,8 +993,13 @@ createApp({
     const stages = STAGES;
     const searchQuery = ref('');
     const dragId = ref(null);
+    const justDragged = ref(false);  // G.1: 拖拽后短暂忽略 click
     const addingFieldFor = ref(null);
     const newField = reactive({ name: '', type: 'text', value: '' });
+
+    // H: backadmin 配置
+    const BACKADMIN_URL = 'https://script.google.com/macros/s/AKfycbzNEE5lMN5nd-lDQ7mA7oog6_dqT-wjuyZE9bkjE28bOdjg6n4iQm7ArWF44cOhlKcj/exec';
+    const BACKADMIN_USERS = ['admin', 'test', 'SSD', 'PSD', 'FSD', 'JSD', 'TSD', 'VSD', 'TESD', 'ASD'];
 
     // 过滤后的记录（按 searchQuery 模糊匹配 5 个核心字段）
     const filteredRecords = computed(() => {
@@ -1159,6 +1165,11 @@ createApp({
     }
 
     function openDetail(record) {
+      // 拖拽后 200ms 内阻止 click (G.1)
+      if (justDragged.value) {
+        justDragged.value = false;
+        return;
+      }
       currentRecord.value = JSON.parse(JSON.stringify(record));
       activeTab.value = record.stage || 'order';
       modal.detail = true;
@@ -1299,6 +1310,8 @@ createApp({
     }
     function onDragEnd() {
       dragId.value = null;
+      justDragged.value = true;  // G.1: 阻止紧随的 click
+      setTimeout(() => { justDragged.value = false; }, 200);
       // 清除所有 column 的 drag-over class
       document.querySelectorAll('.column.drag-over').forEach(el => el.classList.remove('drag-over'));
     }
@@ -1341,15 +1354,90 @@ createApp({
       }
     }
 
-    // ===== Excel 导出 (E) =====
+    // ===== 从 backadmin 导入 (H) =====
+    async function importFromBackadmin() {
+      showToast('📡 正在从 backadmin 拉数据...', 'success', 2000);
+      const existingProjNos = new Set(records.value.map(r => r.projNo).filter(Boolean));
+      const collected = [];
+      const errors = [];
+
+      for (const username of BACKADMIN_USERS) {
+        try {
+          const url = BACKADMIN_URL + '?action=getUserStatistics&username=' + encodeURIComponent(username);
+          const resp = await fetch(url, { method: 'GET' });
+          if (!resp.ok) { errors.push(username + ': HTTP ' + resp.status); continue; }
+          const data = await resp.json();
+          if (!data.success || !Array.isArray(data.quotes)) continue;
+          data.quotes.forEach(q => {
+            // 过滤：orderedAt 有值 + lockedCustomer=true
+            if (q.orderedAt && q.lockedCustomer && q.projNo && !existingProjNos.has(q.projNo)) {
+              collected.push({
+                projNo: q.projNo,
+                salesperson: q.subSalesperson || q.measurementEngineer || q.designerName || username,
+                customerPhone: '',  // backadmin 没存电话
+                customerAddress: q.customerAddress || '',
+                orderedAt: q.orderedAt,
+                source: 'backadmin'
+              });
+            }
+          });
+        } catch (err) {
+          errors.push(username + ': ' + err.message);
+        }
+      }
+
+      if (collected.length === 0) {
+        showToast('📡 没有新的 ordered quote 要导入' + (errors.length ? '（' + errors.length + ' 个错误）' : ''), 'warn', 4000);
+        if (errors.length) console.warn('Backadmin import errors:', errors);
+        return;
+      }
+
+      // 批量导入
+      const r = await callGAS({ action: 'importRecords', records: JSON.stringify(collected) });
+      if (r.success) {
+        const results = r.results || { success: 0, failed: 0 };
+        showToast(`✓ 从 backadmin 导入: ${results.success} 成功${results.failed ? `, ${results.failed} 失败` : ''}` + (errors.length ? ` (拉取 ${errors.length} 错误)` : ''), 'success', 4000);
+        await loadRecords();
+      } else {
+        showToast('导入失败: ' + (r.error || '未知错误'), 'error', 5000);
+      }
+    }
+
+    // ===== Excel 导出 (E + G.2) =====
     function exportExcel() {
       if (records.value.length === 0) {
         showToast('没有记录可导出', 'warn');
         return;
       }
+      // G.2: 扫描所有 records 收集 unique 的自定义字段 (按阶段)
+      // 格式: { 'order__订单号': '订单号', 'container__柜号': '柜号' }
+      const customCols = {}; // key -> display name
+      records.value.forEach(r => {
+        const s = r.stages || {};
+        Object.keys(s).forEach(stageKey => {
+          const stageData = s[stageKey];
+          if (stageData && Array.isArray(stageData.customFields)) {
+            stageData.customFields.forEach(f => {
+              if (f && f.name) {
+                const k = stageKey + '__' + f.name;
+                if (!customCols[k]) customCols[k] = f.name;
+              }
+            });
+          }
+        });
+      });
+      // 表头映射: 'order__订单号' → '下单·订单号'
+      const stageNameMap = { order: '下单', container: '装柜', arrival: '抵达', install: '安装' };
+      const customHeaders = {};
+      Object.keys(customCols).forEach(k => {
+        const [stageKey, ...nameParts] = k.split('__');
+        const fieldName = nameParts.join('__');
+        customHeaders[k] = (stageNameMap[stageKey] || stageKey) + '·' + fieldName;
+      });
+
       const rows = records.value.map(r => {
         const s = r.stages || {};
-        return {
+        const row = {
           '工程编号': r.projNo || '',
           '当前阶段': stages.find(st => st.key === r.stage).label,
           '业务员': r.salesperson || '',
@@ -1367,10 +1455,17 @@ createApp({
           '抵达备注': (s.arrival && s.arrival.remarks) || '',
           '安装日期': (s.install && s.install.date) || '',
           '安装人员': (s.install && s.install.installer) || '',
-          '安装备注': (s.install && s.install.remarks) || '',
-          '创建时间': r.createdAt || '',
-          '更新时间': r.updatedAt || ''
+          '安装备注': (s.install && s.install.remarks) || ''
         };
+        // 添加自定义字段列
+        Object.keys(customCols).forEach(k => {
+          const [stageKey, ...nameParts] = k.split('__');
+          const fieldName = nameParts.join('__');
+          const stageData = s[stageKey];
+          const field = stageData && stageData.customFields && stageData.customFields.find(f => f.name === fieldName);
+          row[customHeaders[k]] = (field && field.value) || '';
+        });
+        return row;
       });
       try {
         const ws = XLSX.utils.json_to_sheet(rows);
@@ -1378,7 +1473,8 @@ createApp({
         XLSX.utils.book_append_sheet(wb, ws, '工程记录');
         const stamp = new Date().toISOString().slice(0, 10);
         XLSX.writeFile(wb, 'squirrelinstall_' + stamp + '.xlsx');
-        showToast('✓ 已导出 ' + rows.length + ' 条', 'success');
+        const customColCount = Object.keys(customCols).length;
+        showToast('✓ 已导出 ' + rows.length + ' 条' + (customColCount ? ' (含 ' + customColCount + ' 个自定义字段)' : ''), 'success', 3000);
       } catch (err) {
         showToast('导出失败: ' + err.message, 'error');
       }
@@ -1480,11 +1576,11 @@ createApp({
     return {
       records, loading, modal, addForm, importPreview, importText,
       currentRecord, activeTab, toast, stages, counts, recordsByStage, keyStats,
-      searchQuery, filteredRecords, dragId,
+      searchQuery, filteredRecords, dragId, justDragged,
       addingFieldFor, newField,
       showAdd, showImport, openDetail, closeDetail,
       submitAdd, submitImport, saveCurrent, deleteCurrent, autoProgress, manualSyncCalendar,
-      printCurrent, exportExcel,
+      printCurrent, exportExcel, importFromBackadmin,
       handleJsonFile, parseImportText,
       startAddField, cancelAddField, addCustomField, removeCustomField,
       onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop,
