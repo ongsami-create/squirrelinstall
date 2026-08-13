@@ -152,8 +152,22 @@
 
 ## 当前 GAS Web App URL
 
-- v1.6.2 用: `https://script.google.com/macros/s/AKfycbxXdUu2Svtx3n2VsXHz76FYjFrHBa7hwxR4Kbmhvp_KEQ4A34p1Ck7NnZjGkyH24jlN/exec`
-- (旧 v1.0 URL `AKfycbz4Q47lL...` 已废弃)
+- v1.8.2 用: `https://script.google.com/macros/s/AKfycbx_yj7nLI2gCFQxvFFUg6zizFB8T4Eq-Ts1zoxn4DkKMPtAT-iK8DC9g555jh_UjSc-KA/exec`
+- 历史 URL (已废弃):
+  - v1.7: `AKfycbxXdUu2...`
+  - v1.0: `AKfycbz4Q47lL...`
+
+## appsscript.json 必备 scopes (SquirrelInstall)
+
+```json
+{
+  "oauthScopes": [
+    "https://www.googleapis.com/auth/calendar",
+    "https://www.googleapis.com/auth/drive",  // 注意：不能用 drive.file
+    "https://www.googleapis.com/auth/script.webapp.deploy"
+  ]
+}
+```
 
 ## GAS 调试技巧
 
