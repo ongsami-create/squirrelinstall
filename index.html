@@ -532,6 +532,131 @@
   details.stage-section[data-stage="arrival"] > summary { border-left: 4px solid var(--arrival); }
   details.stage-section[data-stage="install"] > summary { border-left: 4px solid var(--install); }
 
+  /* v3.0: 阶段锁定 (locked) — 当前 stage 之外的 section 全锁 */
+  details.stage-section.locked {
+    background: #f5f5f5;
+    border-color: #ddd;
+  }
+  details.stage-section.locked > summary {
+    background: #ececec;
+    color: #999;
+  }
+  details.stage-section.locked > summary::before {
+    content: '🔒';
+    font-size: 11px;
+  }
+  details.stage-section.locked .stage-content {
+    background: #fafafa;
+    color: #999;
+  }
+  details.stage-section.locked input,
+  details.stage-section.locked textarea,
+  details.stage-section.locked select,
+  details.stage-section.locked button:not(.btn-secondary) {
+    pointer-events: none;
+    background: #f5f5f5 !important;
+    color: #aaa !important;
+    border-color: #e0e0e0 !important;
+    opacity: 0.7;
+  }
+  .stage-lock-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    background: #ddd;
+    color: #888;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: 500;
+  }
+
+  /* v3.0: Multi-row data table (下单/装柜/抵达) */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 6px;
+    font-size: 13px;
+  }
+  .data-table th,
+  .data-table td {
+    padding: 6px 8px;
+    border: 1px solid #e4e6eb;
+    text-align: left;
+  }
+  .data-table th {
+    background: #f7f8fa;
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--subtext);
+  }
+  .data-table input.form-input {
+    border: none;
+    padding: 2px 4px;
+    background: transparent;
+    font-size: 13px;
+    width: 100%;
+  }
+  .data-table input.form-input:focus {
+    background: #fff8d4;
+    outline: 1px solid var(--primary);
+  }
+  .data-table td {
+    padding: 0;
+  }
+  .data-table .col-factory  { width: 22%; }
+  .data-table .col-note     { width: 38%; }
+  .data-table .col-company  { width: 22%; }
+  .data-table .col-tracking { width: 22%; }
+  .data-table .col-quantity { width: 60px; text-align: center; }
+  .data-table .col-confirm  { width: 70px; text-align: center; }
+  .data-table .col-action   { width: 30px; text-align: center; }
+  .data-table .derived-field {
+    padding: 2px 6px;
+    color: #555;
+    font-size: 12px;
+    background: #f9f9f9;
+  }
+  .data-table .derived-field.empty {
+    color: #bbb;
+    font-style: italic;
+  }
+
+  /* v3.0: 已完成卡片 */
+  .card.completed {
+    opacity: 0.55;
+    filter: grayscale(70%);
+  }
+  .card-completed-badge {
+    margin-top: 6px;
+    padding: 3px 8px;
+    background: #28a745;
+    color: #fff;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    display: inline-block;
+  }
+  .complete-btn {
+    background: #28a745;
+    color: #fff;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .complete-btn:hover { background: #1f8a37; }
+  .uncomplete-btn {
+    background: transparent;
+    color: var(--subtext);
+    border: 1px solid #ddd;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
   /* Dynamic rows */
   .dynamic-row {
     display: grid;
@@ -750,7 +875,7 @@
         <div v-else-if="recordsByStage[stage.key].length === 0 && searchQuery" class="empty">无匹配工程</div>
         <div v-else-if="recordsByStage[stage.key].length === 0" class="empty">暂无工程</div>
         <div v-for="r in recordsByStage[stage.key]" :key="r.id"
-             class="card" :class="['stage-' + r.stage, { dragging: dragId === r.id }]"
+             class="card" :class="['stage-' + r.stage, { dragging: dragId === r.id, completed: isCompleted(r) }]"
              draggable="true"
              @dragstart="onDragStart($event, r)"
              @dragend="onDragEnd"
@@ -768,6 +893,7 @@
                  :class="{ active: hasAnyDate(r, s.key) }"
                  :title="s.label + ': ' + (getStageDateSummary(r, s.key) || '未填')"></div>
           </div>
+          <div v-if="isCompleted(r)" class="card-completed-badge">✓ 已完成 {{ r.stages && r.stages.install && r.stages.install.completedAt ? '(' + formatDate(r.stages.install.completedAt).split(' ')[0] + ')' : '' }}</div>
           <div v-if="isOverdue(r)" class="card-overdue">⚠️ 逾期未完成</div>
         </div>
       </div>
@@ -963,10 +1089,13 @@
           </div>
         </div>
 
-        <!-- 阶段 1: 下单 -->
-        <details class="stage-section" data-stage="order" :open="stageOpen.order">
+        <!-- 阶段 1: 下单 (v3.0: 多行 factory + note) -->
+        <details class="stage-section" data-stage="order"
+                 :class="{ locked: isStageLocked('order') }"
+                 :open="stageOpen.order">
           <summary>
             🛒 下单
+            <span class="stage-lock-badge" v-if="isStageLocked('order')">🔒 只读</span>
             <span class="stage-summary-count" v-if="getStageSummary('order')">{{ getStageSummary('order') }}</span>
           </summary>
           <div class="stage-content">
@@ -978,27 +1107,39 @@
                   <span class="remove" @click="removeStageDate('order', idx)">×</span>
                 </span>
               </div>
-              <input type="date" class="form-input" @change="addStageDate('order', $event.target.value); $event.target.value=''">
+              <input type="date" class="form-input" :disabled="isStageLocked('order')"
+                     @change="addStageDate('order', $event.target.value); $event.target.value=''">
             </div>
             <div class="form-group">
-              <label class="form-label">下单工厂</label>
-              <input class="form-input" v-model="currentRecord.stages.order.factory" placeholder="例: ABC 工厂">
-            </div>
-            <div class="form-group">
-              <label class="form-label">输入框 / 说明（可增加行）</label>
-              <div v-for="(row, idx) in currentRecord.stages.order.rows" :key="'or-' + idx" class="dynamic-row">
-                <input class="form-input" v-model="row.text" placeholder="说明...">
-                <button class="btn-icon-sm" @click="removeStageRow('order', idx)" title="删除">×</button>
-              </div>
-              <button class="btn btn-secondary btn-sm" @click="addStageRow('order')">+ 增加行</button>
+              <label class="form-label">下单明细 (下单工厂 + 说明 一行一对，可增加行)</label>
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th class="col-factory">下单工厂</th>
+                    <th class="col-note">说明</th>
+                    <th class="col-action"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(row, idx) in currentRecord.stages.order.rows" :key="'or-' + idx">
+                    <td class="col-factory"><input class="form-input" v-model="row.factory" placeholder="例: ABC 工厂" :disabled="isStageLocked('order')"></td>
+                    <td class="col-note"><input class="form-input" v-model="row.note" placeholder="说明 / 备注..." :disabled="isStageLocked('order')"></td>
+                    <td class="col-action"><button class="btn-icon-sm" @click="removeStageRow('order', idx)" :disabled="isStageLocked('order')" title="删除">×</button></td>
+                  </tr>
+                </tbody>
+              </table>
+              <button class="btn btn-secondary btn-sm" @click="addStageRow('order')" :disabled="isStageLocked('order')">+ 增加行</button>
             </div>
           </div>
         </details>
 
-        <!-- 阶段 2: 装柜 (数据从下单带过来) -->
-        <details class="stage-section" data-stage="container" :open="stageOpen.container">
+        <!-- 阶段 2: 装柜 (v3.0: 4 字段一行; factory 从下单带过来派生) -->
+        <details class="stage-section" data-stage="container"
+                 :class="{ locked: isStageLocked('container') }"
+                 :open="stageOpen.container">
           <summary>
             📦 装柜
+            <span class="stage-lock-badge" v-if="isStageLocked('container')">🔒 只读</span>
             <span class="stage-summary-count" v-if="getStageSummary('container')">{{ getStageSummary('container') }}</span>
           </summary>
           <div class="stage-content">
@@ -1010,43 +1151,48 @@
                   <span class="remove" @click="removeStageDate('container', idx)">×</span>
                 </span>
               </div>
-              <input type="date" class="form-input" @change="addStageDate('container', $event.target.value); $event.target.value=''">
-            </div>
-            <div class="form-row">
-              <div class="form-group">
-                <label class="form-label">下单工厂 (从下单带过来)</label>
-                <input class="form-input" v-model="currentRecord.stages.container.factory" :placeholder="currentRecord.stages.order.factory || '—'">
-              </div>
-              <div class="form-group">
-                <label class="form-label">装柜公司 (物流)</label>
-                <input class="form-input" v-model="currentRecord.stages.container.company" placeholder="例: XYZ 物流">
-              </div>
-            </div>
-            <div class="form-row">
-              <div class="form-group">
-                <label class="form-label">物流编号</label>
-                <input class="form-input" v-model="currentRecord.stages.container.trackingNo" placeholder="例: TN12345">
-              </div>
-              <div class="form-group">
-                <label class="form-label">数量</label>
-                <input type="number" class="form-input" v-model.number="currentRecord.stages.container.quantity" placeholder="0">
-              </div>
+              <input type="date" class="form-input" :disabled="isStageLocked('container')"
+                     @change="addStageDate('container', $event.target.value); $event.target.value=''">
             </div>
             <div class="form-group">
-              <label class="form-label">输入框 / 说明（可增加行）</label>
-              <div v-for="(row, idx) in currentRecord.stages.container.rows" :key="'cr-' + idx" class="dynamic-row">
-                <input class="form-input" v-model="row.text" placeholder="说明...">
-                <button class="btn-icon-sm" @click="removeStageRow('container', idx)" title="删除">×</button>
-              </div>
-              <button class="btn btn-secondary btn-sm" @click="addStageRow('container')">+ 增加行</button>
+              <label class="form-label">装柜明细 (下单工厂从下单带过来，装柜公司/物流编号/数量 4 字段一行)</label>
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th class="col-factory">下单工厂 (派生)</th>
+                    <th class="col-company">装柜公司 (物流)</th>
+                    <th class="col-tracking">物流编号</th>
+                    <th class="col-quantity">数量</th>
+                    <th class="col-action"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(row, idx) in currentRecord.stages.container.rows" :key="'cr-' + idx">
+                    <td class="col-factory">
+                      <div class="derived-field" :class="{ empty: !getOrderFactory(idx) }">
+                        {{ getOrderFactory(idx) || '—' }}
+                      </div>
+                    </td>
+                    <td class="col-company"><input class="form-input" v-model="row.company" placeholder="例: XYZ 物流" :disabled="isStageLocked('container')"></td>
+                    <td class="col-tracking"><input class="form-input" v-model="row.trackingNo" placeholder="例: TN12345" :disabled="isStageLocked('container')"></td>
+                    <td class="col-quantity"><input type="number" class="form-input" v-model.number="row.quantity" placeholder="0" :disabled="isStageLocked('container')" style="text-align: center;"></td>
+                    <td class="col-action"><button class="btn-icon-sm" @click="removeStageRow('container', idx)" :disabled="isStageLocked('container')" title="删除">×</button></td>
+                  </tr>
+                </tbody>
+              </table>
+              <button class="btn btn-secondary btn-sm" @click="addStageRow('container')" :disabled="isStageLocked('container')">+ 增加行</button>
+              <span style="font-size: 11px; color: var(--subtext); margin-left: 8px;">增加行后抵达会同步</span>
             </div>
           </div>
         </details>
 
-        <!-- 阶段 3: 抵达 (数据从装柜带过来 + 确认抵达 + 送货时间) -->
-        <details class="stage-section" data-stage="arrival" :open="stageOpen.arrival">
+        <!-- 阶段 3: 抵达 (v3.0: 4 字段从装柜带过来 + 确认勾选; 修 quantity bug) -->
+        <details class="stage-section" data-stage="arrival"
+                 :class="{ locked: isStageLocked('arrival') }"
+                 :open="stageOpen.arrival">
           <summary>
             🚚 抵达
+            <span class="stage-lock-badge" v-if="isStageLocked('arrival')">🔒 只读</span>
             <span class="stage-summary-count" v-if="getStageSummary('arrival')">{{ getStageSummary('arrival') }}</span>
           </summary>
           <div class="stage-content">
@@ -1058,49 +1204,65 @@
                   <span class="remove" @click="removeStageDate('arrival', idx)">×</span>
                 </span>
               </div>
-              <input type="date" class="form-input" @change="addStageDate('arrival', $event.target.value); $event.target.value=''">
-            </div>
-            <div class="form-row">
-              <div class="form-group">
-                <label class="form-label">下单工厂 (从下单带过来)</label>
-                <input class="form-input" v-model="currentRecord.stages.arrival.factory" :placeholder="currentRecord.stages.order.factory || '—'">
-              </div>
-              <div class="form-group">
-                <label class="form-label">装柜公司 (从装柜带过来)</label>
-                <input class="form-input" v-model="currentRecord.stages.arrival.company" :placeholder="currentRecord.stages.container.company || '—'">
-              </div>
-            </div>
-            <div class="form-row">
-              <div class="form-group">
-                <label class="form-label">物流编号 (从装柜带过来)</label>
-                <input class="form-input" v-model="currentRecord.stages.arrival.trackingNo" :placeholder="currentRecord.stages.container.trackingNo || '—'">
-              </div>
-              <div class="form-group">
-                <label class="form-label">数量 (从装柜带过来)</label>
-                <input type="number" class="form-input" v-model.number="currentRecord.stages.arrival.quantity" :placeholder="currentRecord.stages.container.quantity || 0">
-              </div>
+              <input type="date" class="form-input" :disabled="isStageLocked('arrival')"
+                     @change="addStageDate('arrival', $event.target.value); $event.target.value=''">
             </div>
             <div class="form-group">
-              <label class="form-label">输入框 / 说明 + 确认抵达（可增加行）</label>
-              <div v-for="(row, idx) in currentRecord.stages.arrival.rows" :key="'ar-' + idx" class="dynamic-row">
-                <input class="form-input" v-model="row.text" placeholder="说明..." style="flex: 1;">
-                <label class="confirmed-check" v-if="row.confirmed">✓ 已确认</label>
-                <input type="checkbox" v-model="row.confirmed" title="确认抵达">
-                <button class="btn-icon-sm" @click="removeStageRow('arrival', idx)" title="删除">×</button>
-              </div>
-              <button class="btn btn-secondary btn-sm" @click="addStageRow('arrival')">+ 增加行</button>
-            </div>
-            <div class="form-group">
-              <label class="form-label">送货时间</label>
-              <input type="datetime-local" class="form-input" v-model="currentRecord.stages.arrival.deliveryTime">
+              <label class="form-label">抵达明细 (4 字段从下单/装柜派生 + 确认勾选)</label>
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th class="col-factory">下单工厂 (下单派生)</th>
+                    <th class="col-company">装柜公司 (装柜派生)</th>
+                    <th class="col-tracking">物流编号 (装柜派生)</th>
+                    <th class="col-quantity">数量 (装柜派生)</th>
+                    <th class="col-confirm">确认收货</th>
+                    <th class="col-action"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(row, idx) in currentRecord.stages.arrival.rows" :key="'ar-' + idx">
+                    <td class="col-factory">
+                      <div class="derived-field" :class="{ empty: !getOrderFactory(idx) }">
+                        {{ getOrderFactory(idx) || '—' }}
+                      </div>
+                    </td>
+                    <td class="col-company">
+                      <div class="derived-field" :class="{ empty: !getContainerField(idx, 'company') }">
+                        {{ getContainerField(idx, 'company') || '—' }}
+                      </div>
+                    </td>
+                    <td class="col-tracking">
+                      <div class="derived-field" :class="{ empty: !getContainerField(idx, 'trackingNo') }">
+                        {{ getContainerField(idx, 'trackingNo') || '—' }}
+                      </div>
+                    </td>
+                    <td class="col-quantity">
+                      <div class="derived-field" :class="{ empty: !getContainerField(idx, 'quantity') }" style="text-align: center;">
+                        {{ getContainerField(idx, 'quantity') || '—' }}
+                      </div>
+                    </td>
+                    <td class="col-confirm" style="text-align: center;">
+                      <input type="checkbox" v-model="row.confirmed" :disabled="isStageLocked('arrival')" title="确认收货">
+                      <span v-if="row.confirmed" style="color: var(--success); font-size: 11px; font-weight: 600; margin-left: 2px;">✓</span>
+                    </td>
+                    <td class="col-action"><button class="btn-icon-sm" @click="removeStageRow('arrival', idx)" :disabled="isStageLocked('arrival')" title="删除">×</button></td>
+                  </tr>
+                </tbody>
+              </table>
+              <button class="btn btn-secondary btn-sm" @click="addStageRow('arrival')" :disabled="isStageLocked('arrival')">+ 增加行</button>
             </div>
           </div>
         </details>
 
-        <!-- 阶段 4: 安装 (安装人员 + 联系号码) -->
-        <details class="stage-section" data-stage="install" :open="stageOpen.install">
+        <!-- 阶段 4: 安装 (v3.0: 完成按钮 + completed 状态) -->
+        <details class="stage-section" data-stage="install"
+                 :class="{ locked: isStageLocked('install') }"
+                 :open="stageOpen.install">
           <summary>
             🔨 安装
+            <span v-if="currentRecord.stages.install.completed" style="color: var(--success); font-size: 11px; font-weight: 600;">✓ 已完成</span>
+            <span class="stage-lock-badge" v-if="isStageLocked('install')">🔒 只读</span>
             <span class="stage-summary-count" v-if="getStageSummary('install')">{{ getStageSummary('install') }}</span>
           </summary>
           <div class="stage-content">
@@ -1112,16 +1274,30 @@
                   <span class="remove" @click="removeStageDate('install', idx)">×</span>
                 </span>
               </div>
-              <input type="date" class="form-input" @change="addStageDate('install', $event.target.value); $event.target.value=''">
+              <input type="date" class="form-input" :disabled="isStageLocked('install')"
+                     @change="addStageDate('install', $event.target.value); $event.target.value=''">
             </div>
             <div class="form-group">
               <label class="form-label">安装人员 (可多人)</label>
               <div v-for="(inst, idx) in currentRecord.stages.install.installers" :key="'in-' + idx" class="installer-row">
-                <input class="form-input" v-model="inst.name" placeholder="姓名 (例: 张师傅)">
-                <input class="form-input" v-model="inst.phone" placeholder="联系号码 (例: 012-...)">
-                <button class="btn-icon-sm" @click="removeInstaller(idx)" title="删除">×</button>
+                <input class="form-input" v-model="inst.name" placeholder="姓名 (例: 张师傅)" :disabled="isStageLocked('install')">
+                <input class="form-input" v-model="inst.phone" placeholder="联系号码 (例: 012-...)" :disabled="isStageLocked('install')">
+                <button class="btn-icon-sm" @click="removeInstaller(idx)" :disabled="isStageLocked('install')" title="删除">×</button>
               </div>
-              <button class="btn btn-secondary btn-sm" @click="addInstaller">+ 添加安装人员</button>
+              <button class="btn btn-secondary btn-sm" @click="addInstaller" :disabled="isStageLocked('install')">+ 添加安装人员</button>
+            </div>
+            <!-- v3.0: 完成按钮 (只在安装 stage 可点击) -->
+            <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); display: flex; gap: 10px; align-items: center;">
+              <button v-if="!currentRecord.stages.install.completed"
+                      class="complete-btn"
+                      :disabled="isStageLocked('install')"
+                      @click="completeInstall">
+                ✓ 完成安装
+              </button>
+              <div v-else style="display: flex; gap: 8px; align-items: center;">
+                <span style="color: var(--success); font-weight: 600;">✓ 已完成 ({{ formatDate(currentRecord.stages.install.completedAt) }})</span>
+                <button class="uncomplete-btn" :disabled="isStageLocked('install')" @click="uncompleteInstall">撤销完成</button>
+              </div>
             </div>
           </div>
         </details>
@@ -1139,8 +1315,7 @@
       </div>
       <div class="modal-footer">
         <button class="btn btn-danger" @click="deleteCurrent">🗑 删除</button>
-        <button class="btn btn-secondary" @click="printCurrent">🖨 打印</button>
-        <button class="btn btn-success" @click="autoProgress">🔄 自动推进</button>
+        <button v-if="currentRecord.stage === 'install'" class="btn btn-secondary" @click="printCurrent">🖨 打印</button>
         <button class="btn btn-primary" @click="saveCurrent">💾 保存</button>
       </div>
     </div>
@@ -1165,13 +1340,92 @@ const STAGES = [
   { key: 'install', label: '安装', icon: '🔨' }
 ];
 
-// v2.0 数据模型
+// v3.0 数据模型: 多行 rows (下单工厂 + 说明) / (装柜 4 字段) / (抵达 4 字段 + 确认勾选)
+// 抵达的 factory/company/trackingNo/quantity 从 container.rows 派生 (不存)
+// 安装新增 completed / completedAt
 function emptyStages() {
   return {
-    order:     { dates: [], factory: '', rows: [] },
-    container: { dates: [], factory: '', company: '', trackingNo: '', quantity: 0, rows: [] },
-    arrival:   { dates: [], factory: '', company: '', trackingNo: '', quantity: 0, rows: [], deliveryTime: '' },
-    install:   { dates: [], installers: [] }
+    order:     { dates: [], rows: [{ factory: '', note: '' }] },
+    container: { dates: [], rows: [{ factory: '', company: '', trackingNo: '', quantity: 0 }] },
+    arrival:   { dates: [], rows: [{ confirmed: false }] },
+    install:   { dates: [], installers: [{ name: '', phone: '' }], completed: false, completedAt: '' }
+  };
+}
+
+// v3.0 数据迁移: 把 v2.0 单值 schema 转成多行 rows schema
+// - 旧 order.factory + order.rows[].text → order.rows[].factory + .note
+// - 旧 container 单值 + rows[].text → container.rows[].factory + .company + .trackingNo + .quantity
+// - 旧 arrival 单值 → arrival.rows[].confirmed (其余从 container 派生)
+// - 旧 install + completed (新增)
+function migrateStages(stages) {
+  if (!stages || typeof stages !== 'object') return emptyStages();
+  const o = stages.order || {};
+  const c = stages.container || {};
+  const a = stages.arrival || {};
+  const i = stages.install || {};
+
+  // 检测是否已迁移: order.rows[0].note 是新 schema
+  const isNew = Array.isArray(o.rows) && o.rows.length > 0 && (
+    'note' in o.rows[0] || 'factory' in o.rows[0] || o.rows[0].text === undefined
+  );
+  if (isNew) return stages; // 已是新 schema, 不动
+
+  // ===== 下单 =====
+  const orderRows = [];
+  if (o.factory) orderRows.push({ factory: o.factory, note: '' });
+  if (Array.isArray(o.rows)) {
+    o.rows.forEach(r => {
+      if (r && r.text) orderRows.push({ factory: '', note: r.text });
+    });
+  }
+  if (orderRows.length === 0) orderRows.push({ factory: '', note: '' });
+
+  // ===== 装柜 =====
+  const containerRows = [];
+  if (c.factory || c.company || c.trackingNo || c.quantity) {
+    containerRows.push({
+      factory: c.factory || '',
+      company: c.company || '',
+      trackingNo: c.trackingNo || '',
+      quantity: c.quantity || 0
+    });
+  }
+  if (Array.isArray(c.rows)) {
+    c.rows.forEach(r => {
+      if (r && r.text) {
+        containerRows.push({ factory: '', company: '', trackingNo: '', quantity: 0, _note: r.text });
+      }
+    });
+  }
+  if (containerRows.length === 0) containerRows.push({ factory: '', company: '', trackingNo: '', quantity: 0 });
+
+  // ===== 抵达 (factory/company/trackingNo/quantity 派生自 container.rows) =====
+  const arrivalRows = [];
+  if (Array.isArray(a.rows)) {
+    a.rows.forEach((r, idx) => {
+      if (r) arrivalRows.push({ confirmed: r.confirmed || false });
+    });
+  }
+  // 同步到 containerRows 长度
+  while (arrivalRows.length < containerRows.length) {
+    arrivalRows.push({ confirmed: false });
+  }
+  if (arrivalRows.length === 0) arrivalRows.push({ confirmed: false });
+
+  // ===== 安装 =====
+  const installData = {
+    dates: Array.isArray(i.dates) ? i.dates.slice() : [],
+    installers: Array.isArray(i.installers) ? i.installers.slice() : [],
+    completed: i.completed || false,
+    completedAt: i.completedAt || ''
+  };
+  if (installData.installers.length === 0) installData.installers = [{ name: '', phone: '' }];
+
+  return {
+    order:     { dates: Array.isArray(o.dates) ? o.dates.slice() : [], rows: orderRows },
+    container: { dates: Array.isArray(c.dates) ? c.dates.slice() : [], rows: containerRows },
+    arrival:   { dates: Array.isArray(a.dates) ? a.dates.slice() : [], rows: arrivalRows },
+    install:   installData
   };
 }
 
@@ -1289,7 +1543,11 @@ createApp({
       const r = await callGAS({ action: 'getAllRecords' });
       loading.value = false;
       if (r.success) {
-        records.value = r.records || [];
+        // v3.0: 客户端迁移老 schema 记录 (防 GAS 没部署 v3 sanitize)
+        records.value = (r.records || []).map(rec => {
+          if (rec && rec.stages) rec.stages = migrateStages(rec.stages);
+          return rec;
+        });
         showToast(`已加载 ${records.value.length} 条工程`, 'success');
       } else {
         showToast('加载失败: ' + (r.error || '未知错误'), 'error');
@@ -1311,6 +1569,7 @@ createApp({
 
     function isOverdue(r) {
       if (r.stage === 'install') return false;
+      if (isCompleted(r)) return false;  // v3.0: 已完成不算逾期
       const s = r.stages && r.stages[r.stage];
       if (!s || !Array.isArray(s.dates) || s.dates.length === 0) return false;
       const today = new Date();
@@ -1320,7 +1579,67 @@ createApp({
       return (today - d) / 86400000 > 14;
     }
 
-    // ===== Stage section helpers (v2.0) =====
+    // v3.0: 安装是否已完成
+    function isCompleted(r) {
+      return !!(r && r.stages && r.stages.install && r.stages.install.completed);
+    }
+
+    // v3.0: 阶段是否锁定 (current stage 之外的都锁)
+    function isStageLocked(stageKey) {
+      const r = currentRecord.value;
+      if (!r) return true;
+      return r.stage !== stageKey;
+    }
+
+    // v3.0: 完成安装
+    function completeInstall() {
+      const r = currentRecord.value;
+      if (!r || !r.stages.install) return;
+      if (!confirm('确定标记此工程为「已完成安装」？完成后卡片会变灰。')) return;
+      r.stages.install.completed = true;
+      r.stages.install.completedAt = new Date().toISOString();
+      showToast('✓ 已标记为完成', 'success');
+    }
+
+    function uncompleteInstall() {
+      const r = currentRecord.value;
+      if (!r || !r.stages.install) return;
+      if (!confirm('确定撤销「已完成」状态？')) return;
+      r.stages.install.completed = false;
+      r.stages.install.completedAt = '';
+      showToast('已撤销完成状态', 'success');
+    }
+
+    // v3.0: 派生字段 (抵达 / 装柜 显示用)
+    function getOrderFactory(idx) {
+      const r = currentRecord.value;
+      if (!r || !r.stages.order || !Array.isArray(r.stages.order.rows)) return '';
+      const row = r.stages.order.rows[idx];
+      return row ? (row.factory || '') : '';
+    }
+    function getContainerField(idx, field) {
+      const r = currentRecord.value;
+      if (!r || !r.stages.container || !Array.isArray(r.stages.container.rows)) return '';
+      const row = r.stages.container.rows[idx];
+      if (!row) return '';
+      const v = row[field];
+      return (v === 0 || v) ? v : '';
+    }
+
+    // v3.0: 行数 cascade — 装柜 ≥ 下单, 抵达 ≥ 装柜
+    function _syncRowCounts() {
+      const s = currentRecord.value.stages;
+      const orderLen = (s.order && s.order.rows) ? s.order.rows.length : 0;
+      const containerLen = (s.container && s.container.rows) ? s.container.rows.length : 0;
+      while (s.container.rows.length < orderLen) {
+        s.container.rows.push({ factory: '', company: '', trackingNo: '', quantity: 0 });
+      }
+      while (s.arrival.rows.length < containerLen) {
+        s.arrival.rows.push({ confirmed: false });
+      }
+    }
+
+    // ===== Stage section helpers (v3.0) =====
     function getStageSummary(stageKey) {
       const r = currentRecord.value;
       if (!r) return '';
@@ -1328,13 +1647,19 @@ createApp({
       if (!s) return '';
       const parts = [];
       if (Array.isArray(s.dates) && s.dates.length) parts.push('📅 ' + s.dates.length);
-      if (s.factory) parts.push('🏭');
-      if (s.company) parts.push('🚚 ' + s.company);
-      if (s.trackingNo) parts.push('#' + s.trackingNo);
-      if (s.quantity) parts.push('×' + s.quantity);
-      if (s.deliveryTime) parts.push('⏰');
-      if (Array.isArray(s.rows) && s.rows.length) parts.push('📝 ' + s.rows.length);
-      if (Array.isArray(s.installers) && s.installers.length) parts.push('👷 ' + s.installers.length);
+      if (Array.isArray(s.rows) && s.rows.length) parts.push('📋 ' + s.rows.length);
+      if (stageKey === 'container') {
+        const filled = (s.rows || []).filter(r => r.company || r.trackingNo || r.quantity).length;
+        if (filled) parts.push('🚚 ' + filled);
+      }
+      if (stageKey === 'arrival') {
+        const confirmed = (s.rows || []).filter(r => r.confirmed).length;
+        if (confirmed) parts.push('✓ ' + confirmed);
+      }
+      if (stageKey === 'install') {
+        if (Array.isArray(s.installers) && s.installers.length) parts.push('👷 ' + s.installers.length);
+        if (s.completed) parts.push('✓ 完成');
+      }
       return parts.join(' ');
     }
 
@@ -1350,14 +1675,32 @@ createApp({
       currentRecord.value.stages[stageKey].dates.splice(idx, 1);
     }
 
+    // v3.0: 加行 (按 stage 不同 schema, 同步 cascade)
     function addStageRow(stageKey) {
       const s = currentRecord.value.stages[stageKey];
+      if (!s) return;
       if (!Array.isArray(s.rows)) s.rows = [];
-      s.rows.push({ text: '', confirmed: false });
+      if (stageKey === 'order') {
+        s.rows.push({ factory: '', note: '' });
+      } else if (stageKey === 'container') {
+        s.rows.push({ factory: '', company: '', trackingNo: '', quantity: 0 });
+      } else if (stageKey === 'arrival') {
+        s.rows.push({ confirmed: false });
+      }
+      _syncRowCounts();
     }
 
+    // v3.0: 删行 (允许下层多于上层; 至少留 1 行)
     function removeStageRow(stageKey, idx) {
-      currentRecord.value.stages[stageKey].rows.splice(idx, 1);
+      const s = currentRecord.value.stages[stageKey];
+      if (!s || !Array.isArray(s.rows)) return;
+      s.rows.splice(idx, 1);
+      // 至少留 1 行
+      if (s.rows.length === 0) {
+        if (stageKey === 'order') s.rows.push({ factory: '', note: '' });
+        else if (stageKey === 'container') s.rows.push({ factory: '', company: '', trackingNo: '', quantity: 0 });
+        else if (stageKey === 'arrival') s.rows.push({ confirmed: false });
+      }
     }
 
     function addInstaller() {
@@ -1373,7 +1716,10 @@ createApp({
     // ===== Open detail modal =====
     function openDetail(record) {
       if (justDragged.value) { justDragged.value = false; return; }
-      currentRecord.value = JSON.parse(JSON.stringify(record));
+      // v3.0: 迁移旧 schema 到新 schema
+      const cloned = JSON.parse(JSON.stringify(record));
+      cloned.stages = migrateStages(cloned.stages);
+      currentRecord.value = cloned;
       // 默认折叠；当前阶段的 section 自动展开
       const sk = currentRecord.value.stage || 'order';
       stageOpen.order = (sk === 'order');
@@ -1388,24 +1734,11 @@ createApp({
       currentRecord.value = null;
     }
 
-    // ===== Auto progress (v2.0) =====
-    function autoProgress() {
-      const r = currentRecord.value;
-      if (!r) return;
-      const s = r.stages;
-      if (s.install && s.install.dates && s.install.dates.length > 0) r.stage = 'install';
-      else if (s.arrival && s.arrival.dates && s.arrival.dates.length > 0) r.stage = 'arrival';
-      else if (s.container && s.container.dates && s.container.dates.length > 0) r.stage = 'container';
-      else r.stage = 'order';
-      showToast('✓ 已自动推进到: ' + stages.find(s => s.key === r.stage).label);
-    }
-
     // ===== Save =====
     async function saveCurrent() {
       const r = currentRecord.value;
       if (!r) return;
-      // auto-progress before save
-      autoProgress();
+      // v3.0: 不再自动推进 — stage 由用户手动选择 (阶段下拉) 或拖拽
       const updates = {
         projNo: r.projNo,
         customerName: r.customerName,
@@ -1421,7 +1754,11 @@ createApp({
       const result = await callGAS({ action: 'updateRecord', id: r.id, updates: JSON.stringify(updates) });
       if (result.success) {
         showToast('✓ 已保存');
-        if (result.record) currentRecord.value = JSON.parse(JSON.stringify(result.record));
+        if (result.record) {
+          // 重新迁移一遍防 GAS 返回老 schema
+          result.record.stages = migrateStages(result.record.stages);
+          currentRecord.value = JSON.parse(JSON.stringify(result.record));
+        }
         modal.detail = false;
         await loadRecords();
       } else {
@@ -1687,13 +2024,27 @@ createApp({
       }
     }
 
-    // ===== Print =====
+    // ===== Print (v3.0: 新 schema) =====
     function printCurrent() {
       const r = currentRecord.value;
       if (!r) return;
       const s = r.stages || {};
       const stageLabel = stages.find(st => st.key === r.stage).label;
       const fmtDates = (arr) => Array.isArray(arr) && arr.length ? arr.join(', ') : '—';
+
+      // v3.0: 多行 rows 拼接成字符串
+      const orderRowsStr = (s.order && s.order.rows || []).map(row =>
+        (row.factory || '—') + (row.note ? ' / ' + row.note : '')
+      ).join('; ') || '—';
+      const containerRowsStr = (s.container && s.container.rows || []).map(row =>
+        (row.company || '—') + ' | #' + (row.trackingNo || '—') + ' | 数量: ' + (row.quantity || 0)
+      ).join('; ') || '—';
+      const arrivalRowsStr = (s.arrival && s.arrival.rows || []).map(row =>
+        '确认: ' + (row.confirmed ? '✓' : '—')
+      ).join('; ') || '—';
+      const installPeople = (s.install && s.install.installers || []).map(i => i.name + ' (' + (i.phone || '') + ')').join(', ') || '—';
+      const installStatus = (s.install && s.install.completed) ? ' ✓ 已完成' : '';
+
       const html = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>${escapeHtml(r.projNo || '')} - 安装单</title>
 <style>
@@ -1722,13 +2073,13 @@ createApp({
     <div class="row"><div class="label">业务员</div><div class="value">${escapeHtml(r.salesperson || '—')} (${escapeHtml(r.salespersonPhone || '—')})</div></div>
   </div>
   <div class="section">
-    <div class="section-title">📅 4 阶段时间表</div>
+    <div class="section-title">📅 4 阶段时间表 (v3.0)</div>
     <table>
       <tr><th>阶段</th><th>日期</th><th>详情</th></tr>
-      <tr><td>🛒 下单</td><td>${fmtDates(s.order && s.order.dates)}</td><td>${escapeHtml((s.order && s.order.factory) || '—')}</td></tr>
-      <tr><td>📦 装柜</td><td>${fmtDates(s.container && s.container.dates)}</td><td>${escapeHtml((s.container && s.container.company) || '—')} | #${escapeHtml((s.container && s.container.trackingNo) || '—')} | 数量: ${(s.container && s.container.quantity) || 0}</td></tr>
-      <tr><td>🚚 抵达</td><td>${fmtDates(s.arrival && s.arrival.dates)}</td><td>送货: ${escapeHtml((s.arrival && s.arrival.deliveryTime) || '—')}</td></tr>
-      <tr><td>🔨 安装</td><td>${fmtDates(s.install && s.install.dates)}</td><td>${(s.install && s.install.installers || []).map(i => i.name + ' (' + (i.phone || '') + ')').join(', ') || '—'}</td></tr>
+      <tr><td>🛒 下单</td><td>${fmtDates(s.order && s.order.dates)}</td><td>${escapeHtml(orderRowsStr)}</td></tr>
+      <tr><td>📦 装柜</td><td>${fmtDates(s.container && s.container.dates)}</td><td>${escapeHtml(containerRowsStr)}</td></tr>
+      <tr><td>🚚 抵达</td><td>${fmtDates(s.arrival && s.arrival.dates)}</td><td>${escapeHtml(arrivalRowsStr)}</td></tr>
+      <tr><td>🔨 安装</td><td>${fmtDates(s.install && s.install.dates)}${installStatus}</td><td>${escapeHtml(installPeople)}</td></tr>
     </table>
   </div>
   ${r.notes ? `<div class="section"><div class="section-title">📝 备注</div><div>${escapeHtml(r.notes)}</div></div>` : ''}
@@ -1740,12 +2091,16 @@ createApp({
       setTimeout(() => { w.print(); }, 300);
     }
 
-    // ===== Excel export (v2.0) =====
+    // ===== Excel export (v3.0: 新 schema) =====
     function exportExcel() {
       if (records.value.length === 0) { showToast('没有记录可导出', 'warn'); return; }
       const fmtDates = (arr) => Array.isArray(arr) ? arr.join(', ') : '';
       const rows = records.value.map(r => {
         const s = r.stages || {};
+        const orderRows = (s.order && s.order.rows || []).map(row => (row.factory || '') + (row.note ? ' / ' + row.note : '')).join('; ');
+        const containerRows = (s.container && s.container.rows || []).map(row => (row.company || '') + ' #' + (row.trackingNo || '') + ' ×' + (row.quantity || 0)).join('; ');
+        const arrivalConfirm = (s.arrival && s.arrival.rows || []).filter(x => x.confirmed).length;
+        const totalQty = (s.container && s.container.rows || []).reduce((sum, row) => sum + (Number(row.quantity) || 0), 0);
         return {
           '工程编号': r.projNo || '',
           '当前阶段': stages.find(st => st.key === r.stage).label,
@@ -1756,15 +2111,15 @@ createApp({
           '业务员': r.salesperson || '',
           '业务员电话': r.salespersonPhone || '',
           '下单日期': fmtDates(s.order && s.order.dates),
-          '下单工厂': (s.order && s.order.factory) || '',
+          '下单明细': orderRows,
           '装柜日期': fmtDates(s.container && s.container.dates),
-          '装柜公司': (s.container && s.container.company) || '',
-          '物流编号': (s.container && s.container.trackingNo) || '',
-          '数量': (s.container && s.container.quantity) || 0,
+          '装柜明细': containerRows,
+          '数量合计': totalQty,
           '抵达日期': fmtDates(s.arrival && s.arrival.dates),
-          '送货时间': (s.arrival && s.arrival.deliveryTime) || '',
+          '已确认/总行数': arrivalConfirm + '/' + ((s.arrival && s.arrival.rows || []).length),
           '安装日期': fmtDates(s.install && s.install.dates),
           '安装人员': (s.install && s.install.installers || []).map(i => i.name + (i.phone ? ' (' + i.phone + ')' : '')).join('; '),
+          '安装完成': (s.install && s.install.completed) ? '✓ ' + (s.install.completedAt || '') : '',
           '备注': r.notes || '',
           '创建时间': r.createdAt || '',
           '更新时间': r.updatedAt || ''
@@ -1864,11 +2219,12 @@ createApp({
       currentRecord, stageOpen, toast, stages, counts, recordsByStage, keyStats,
       searchQuery, filteredRecords, dragId, justDragged,
       showAdd, showImport, openDetail, closeDetail,
-      submitAdd, submitImport, saveCurrent, deleteCurrent, autoProgress,
+      submitAdd, submitImport, saveCurrent, deleteCurrent,
       printCurrent, exportExcel, syncAllToCalendar, fetchFromBackadmin, getSelectedCount,
       handleJsonFile, parseImportText,
       addStageDate, removeStageDate, addStageRow, removeStageRow,
       addInstaller, removeInstaller, getStageSummary, hasAnyDate, getStageDateSummary,
+      isStageLocked, isCompleted, completeInstall, uncompleteInstall, getOrderFactory, getContainerField,
       onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop,
       loadRecords, isOverdue, truncate, formatDate, highlight
     };

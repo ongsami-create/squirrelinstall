@@ -100,7 +100,12 @@ function buildEventTitle(record) {
   // 标题: [projNo] 客户名字 | 客户电话 | 客户地址 | 数量 | 业务员 (电话)
   const r = record;
   const s = r.stages || {};
-  const totalQty = (s.container && s.container.quantity) || (s.arrival && s.arrival.quantity) || '';
+  // v3.0: 数量从 container.rows[].quantity 求和 (多行)
+  // 抵达.rows 只有 confirmed, 数量从 container 派生
+  let totalQty = 0;
+  if (s.container && Array.isArray(s.container.rows)) {
+    s.container.rows.forEach(row => { if (row && row.quantity) totalQty += Number(row.quantity) || 0; });
+  }
   const sales = r.salesperson || '—';
   const salesPhone = r.salespersonPhone ? ' (' + r.salespersonPhone + ')' : '';
   let title = '[' + (r.projNo || 'NOID') + ']';
@@ -115,6 +120,22 @@ function buildEventTitle(record) {
 
 function buildEventDescription(record) {
   const s = record.stages || {};
+  // v3.0: 下单只显示日期; 抵达只显示日期; 安装显示人员
+  // 装柜: 保留 company / trackingNo / quantity
+  const orderFactoryLine = '';  // v3.0: 不显示 factory 名字
+  const containerLine = '📦 装柜: ' + fmtDateList(s.container && s.container.dates) + (s.container && s.container.company ? ' | ' + s.container.company : '') + (s.container && s.container.trackingNo ? ' | ' + s.container.trackingNo : '') + (s.container && s.container.quantity ? ' | 数量:' + s.container.quantity : '');
+  const arrivalLine = '🚚 抵达: ' + fmtDateList(s.arrival && s.arrival.dates);  // v3.0: 不显示 deliveryTime
+  // v3.0: 安装显示安装人员名字和电话
+  let installLine = '🔨 安装: ' + fmtDateList(s.install && s.install.dates);
+  if (s.install && Array.isArray(s.install.installers) && s.install.installers.length) {
+    const people = s.install.installers.filter(i => i && (i.name || i.phone)).map(i => {
+      return (i.name || '—') + (i.phone ? ' (' + i.phone + ')' : '');
+    });
+    if (people.length) installLine += ' | ' + people.join(', ');
+  }
+  if (s.install && s.install.completed) {
+    installLine += ' | ✓ 已完成';
+  }
   const lines = [
     '📋 工程: ' + (record.projNo || '—'),
     '👤 客户: ' + (record.customerName || '—') + (record.customerPhone ? ' (' + record.customerPhone + ')' : ''),
@@ -123,10 +144,10 @@ function buildEventDescription(record) {
     '💼 业务员: ' + (record.salesperson || '—') + (record.salespersonPhone ? ' (' + record.salespersonPhone + ')' : ''),
     '',
     '━━━ 各阶段日期 ━━━',
-    '🛒 下单: ' + fmtDateList(s.order && s.order.dates) + (s.order && s.order.factory ? ' | ' + s.order.factory : ''),
-    '📦 装柜: ' + fmtDateList(s.container && s.container.dates) + (s.container && s.container.company ? ' | ' + s.container.company : '') + (s.container && s.container.trackingNo ? ' | ' + s.container.trackingNo : '') + (s.container && s.container.quantity ? ' | 数量:' + s.container.quantity : ''),
-    '🚚 抵达: ' + fmtDateList(s.arrival && s.arrival.dates) + (s.arrival && s.arrival.deliveryTime ? ' | 送货:' + s.arrival.deliveryTime : ''),
-    '🔨 安装: ' + fmtDateList(s.install && s.install.dates),
+    '🛒 下单: ' + fmtDateList(s.order && s.order.dates) + orderFactoryLine,
+    containerLine,
+    arrivalLine,
+    installLine,
     '',
     '━━━ 备注 ━━━',
     record.notes || '—',
@@ -144,27 +165,20 @@ function fmtDateList(dates) {
   return dates.join(', ');
 }
 
-// v2.0: 按当前阶段拿要显示的日期
+// v3.0: 按当前阶段拿要显示的日期
 function getEventDateRange(record) {
   const s = record.stages || {};
   const stage = record.stage;
   const dates = [];
 
   if (stage === 'install') {
-    // 安装: 所有日期连续
     if (s.install && Array.isArray(s.install.dates)) dates.push(...s.install.dates);
   } else if (stage === 'arrival') {
-    // 抵达: 抵达日期 + 送货时间日期
+    // v3.0: 抵达只显示抵达日期 (不显示 deliveryTime, 因为 schema 里没这字段了)
     if (s.arrival && Array.isArray(s.arrival.dates)) dates.push(...s.arrival.dates);
-    if (s.arrival && s.arrival.deliveryTime) {
-      const d = s.arrival.deliveryTime.substring(0, 10);
-      if (d) dates.push(d);
-    }
   } else if (stage === 'container') {
-    // 装柜: 只装柜日期
     if (s.container && Array.isArray(s.container.dates)) dates.push(...s.container.dates);
   } else if (stage === 'order') {
-    // 下单: 只下单日期
     if (s.order && Array.isArray(s.order.dates)) dates.push(...s.order.dates);
   }
 
@@ -271,19 +285,21 @@ function syncAllToCalendar() {
   return { success: true, results: results };
 }
 
-// ===== 数据模型工具 (v2.0) =====
+// ===== 数据模型工具 (v3.0) =====
 function emptyStages() {
   return {
-    order:     { dates: [], factory: '', rows: [] },
-    container: { dates: [], factory: '', company: '', trackingNo: '', quantity: 0, rows: [] },
-    arrival:   { dates: [], factory: '', company: '', trackingNo: '', quantity: 0, rows: [], deliveryTime: '' },
-    install:   { dates: [], installers: [] }
+    order:     { dates: [], rows: [{ factory: '', note: '' }] },
+    container: { dates: [], rows: [{ factory: '', company: '', trackingNo: '', quantity: 0 }] },
+    arrival:   { dates: [], rows: [{ confirmed: false }] },
+    install:   { dates: [], installers: [{ name: '', phone: '' }], completed: false, completedAt: '' }
   };
 }
 
 function sanitizeStages(raw) {
   const base = emptyStages();
   if (!raw || typeof raw !== 'object') return base;
+  // v3.0: 检测是否需要迁移
+  if (!migratedV3(raw)) raw = migrateStagesServer(raw);
   ['order', 'container', 'arrival', 'install'].forEach(k => {
     if (raw[k] && typeof raw[k] === 'object') {
       base[k] = Object.assign({}, base[k], raw[k]);
@@ -294,11 +310,72 @@ function sanitizeStages(raw) {
     if (!Array.isArray(base[k].dates)) base[k].dates = [];
     if (k === 'install') {
       if (!Array.isArray(base[k].installers)) base[k].installers = [];
+      base[k].completed = !!base[k].completed;
+      if (typeof base[k].completedAt !== 'string') base[k].completedAt = '';
     } else {
       if (!Array.isArray(base[k].rows)) base[k].rows = [];
     }
   });
   return base;
+}
+
+// v3.0: 检测 stages 是否已是新 schema
+function migratedV3(s) {
+  if (!s || typeof s !== 'object') return false;
+  // 新 schema: order.rows[0].note 或 .factory (旧 schema 是 .text)
+  if (s.order && Array.isArray(s.order.rows) && s.order.rows.length > 0) {
+    const r0 = s.order.rows[0];
+    if (r0 && (r0.note !== undefined || r0.factory !== undefined || r0.text === undefined)) return true;
+  }
+  // 新 schema: install.completed 是 boolean
+  if (s.install && typeof s.install.completed === 'boolean') return true;
+  return false;
+}
+
+// v3.0: 服务端迁移 (跟前端一致)
+function migrateStagesServer(s) {
+  const o = (s && s.order) || {};
+  const c = (s && s.container) || {};
+  const a = (s && s.arrival) || {};
+  const i = (s && s.install) || {};
+
+  const orderRows = [];
+  if (o.factory) orderRows.push({ factory: o.factory, note: '' });
+  if (Array.isArray(o.rows)) {
+    o.rows.forEach(r => { if (r && r.text) orderRows.push({ factory: '', note: r.text }); });
+  }
+  if (orderRows.length === 0) orderRows.push({ factory: '', note: '' });
+
+  const containerRows = [];
+  if (c.factory || c.company || c.trackingNo || c.quantity) {
+    containerRows.push({ factory: c.factory || '', company: c.company || '', trackingNo: c.trackingNo || '', quantity: c.quantity || 0 });
+  }
+  if (Array.isArray(c.rows)) {
+    c.rows.forEach(r => { if (r && r.text) containerRows.push({ factory: '', company: '', trackingNo: '', quantity: 0, _note: r.text }); });
+  }
+  if (containerRows.length === 0) containerRows.push({ factory: '', company: '', trackingNo: '', quantity: 0 });
+
+  const arrivalRows = [];
+  if (Array.isArray(a.rows)) {
+    a.rows.forEach(r => { if (r) arrivalRows.push({ confirmed: r.confirmed || false }); });
+  }
+  while (arrivalRows.length < containerRows.length) arrivalRows.push({ confirmed: false });
+  if (arrivalRows.length === 0) arrivalRows.push({ confirmed: false });
+
+  const installData = {
+    dates: Array.isArray(i.dates) ? i.dates.slice() : [],
+    installers: Array.isArray(i.installers) ? i.installers.slice() : [],
+    completed: i.completed || false,
+    completedAt: i.completedAt || ''
+  };
+  if (installData.installers.length === 0) installData.installers = [{ name: '', phone: '' }];
+
+  return {
+    order:     { dates: Array.isArray(o.dates) ? o.dates.slice() : [], rows: orderRows },
+    container: { dates: Array.isArray(c.dates) ? c.dates.slice() : [], rows: containerRows },
+    arrival:   { dates: Array.isArray(a.dates) ? a.dates.slice() : [], rows: arrivalRows },
+    install:   installData
+  };
 }
 
 function validStage(stage) {
