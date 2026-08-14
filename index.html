@@ -837,7 +837,7 @@
         <!-- 两种导入方式 -->
         <div class="import-tabs">
           <button class="import-tab" :class="{ active: importTab === 'cloud' }" @click="importTab = 'cloud'">
-            ☁️ 从云端 (backadmin)
+            ☁️ 从云端 (Squirrel Designer)
           </button>
           <button class="import-tab" :class="{ active: importTab === 'local' }" @click="importTab = 'local'">
             📁 从本地 JSON
@@ -851,7 +851,7 @@
               {{ cloudLoading ? '⏳ 拉取中...' : '🔄 拉取已下单的报价' }}
             </button>
             <span style="margin-left: 10px; color: var(--subtext); font-size: 12px;">
-              只显示 backadmin 里 orderedAt 有值的报价
+              从 Squirrel Designer 拉 commission50Marked / commission100Marked 的报价（带客户电话、地址、业务员电话）
             </span>
           </div>
           <div v-if="importPreview.length" class="form-section">
@@ -859,7 +859,11 @@
             <div v-for="(r, idx) in importPreview" :key="idx" class="import-row">
               <input type="checkbox" :id="'imp-' + idx" v-model="importSelected[idx]">
               <label :for="'imp-' + idx" style="flex:1; cursor: pointer; font-size: 13px;">
-                <strong>{{ r.projNo }}</strong> · {{ r.salesperson }} · {{ r.customerName || '—' }} · {{ truncate(r.customerAddress, 40) }}
+                <strong>{{ r.projNo }}</strong> · {{ r.customerName || '—' }}
+                <span v-if="r.customerPhone" style="color: var(--subtext);"> · 📱 {{ r.customerPhone }}</span>
+                <span v-if="r.salespersonPhone" style="color: var(--subtext);"> · ☎️ {{ r.salespersonPhone }}</span>
+                <span> · {{ r.salesperson || '—' }}</span>
+                <span v-if="r.customerAddress" style="color: var(--subtext);"> · {{ truncate(r.customerAddress, 40) }}</span>
               </label>
             </div>
           </div>
@@ -885,7 +889,11 @@
             <div v-for="(r, idx) in importPreview" :key="idx" class="import-row">
               <input type="checkbox" :id="'imp2-' + idx" v-model="importSelected[idx]">
               <label :for="'imp2-' + idx" style="flex:1; cursor: pointer; font-size: 13px;">
-                <strong>{{ r.projNo }}</strong> · {{ r.salesperson }} · {{ r.customerName || '—' }} · {{ truncate(r.customerAddress, 40) }}
+                <strong>{{ r.projNo }}</strong> · {{ r.customerName || '—' }}
+                <span v-if="r.customerPhone" style="color: var(--subtext);"> · 📱 {{ r.customerPhone }}</span>
+                <span v-if="r.salespersonPhone" style="color: var(--subtext);"> · ☎️ {{ r.salespersonPhone }}</span>
+                <span> · {{ r.salesperson || '—' }}</span>
+                <span v-if="r.customerAddress" style="color: var(--subtext);"> · {{ truncate(r.customerAddress, 40) }}</span>
               </label>
             </div>
           </div>
@@ -1190,8 +1198,11 @@ createApp({
     const dragId = ref(null);
     const justDragged = ref(false);
 
-    const BACKADMIN_URL = 'https://script.google.com/macros/s/AKfycbzNEE5lMN5nd-lDQ7mA7oog6_dqT-wjuyZE9bkjE28bOdjg6n4iQm7ArWF44cOhlKcj/exec';
+    // v2.1: 云端导入改读 Squirrel Designer (报价系统) — 它有 customerContact / salespersonContact / customerAddress 全字段
+    //       backadmin 没有客户电话和业务员电话，不能满足导入需求
+    //       backadmin URL 留作参考: https://script.google.com/macros/s/AKfycbzNEE5lMN5nd-lDQ7mA7oog6_dqT-wjuyZE9bkjE28bOdjg6n4iQm7ArWF44cOhlKcj/exec
     const BACKADMIN_USERS = ['admin', 'test', 'SSD', 'PSD', 'FSD', 'JSD', 'TSD', 'VSD', 'TESD', 'ASD'];
+    const SD_URL = 'https://script.google.com/macros/s/AKfycbyOEmxMojsICWRgpLgII-fB1jniWTCMLBMSvwFUxAz6IhpZsdRnMRfENV2p88LOQ7cm/exec';
 
     // ===== Computed =====
     const filteredRecords = computed(() => {
@@ -1495,7 +1506,9 @@ createApp({
       return importSelected.value.filter(Boolean).length;
     }
 
-    // 从 backadmin 拉 ordered quote
+    // 从 Squirrel Designer 拉已 commission 的 quote
+    // v2.1: 改读 Squirrel Designer (报价系统) — 它有 customerContact / salespersonContact / customerAddress 全字段
+    // filter: commission50Marked || commission100Marked = 已收订金 = 已下单
     async function fetchFromBackadmin() {
       cloudLoading.value = true;
       importPreview.value = [];
@@ -1504,25 +1517,28 @@ createApp({
       const collected = [];
       for (const username of BACKADMIN_USERS) {
         try {
-          const url = BACKADMIN_URL + '?action=getUserStatistics&username=' + encodeURIComponent(username);
+          const url = SD_URL + '?action=getQuoteList&username=' + encodeURIComponent(username);
           const resp = await fetch(url);
           if (!resp.ok) continue;
           const data = await resp.json();
           if (!data.success || !Array.isArray(data.quotes)) continue;
           data.quotes.forEach(q => {
-            if (q.orderedAt && q.lockedCustomer && q.projNo && !existingProjNos.has(q.projNo)) {
-              collected.push({
-                projNo: q.projNo,
-                customerName: q.customerName || '',
-                customerPhone: '',
-                customerAddress: q.customerAddress || '',
-                arrivalAddress: '',
-                salesperson: q.subSalesperson || q.measurementEngineer || q.designerName || username,
-                salespersonPhone: '',
-                source: 'backadmin',
-                orderedAt: q.orderedAt
-              });
-            }
+            // 跳过 cache 行
+            if (q.id === 'stats_cache' || q.projNo === 'stats_cache') return;
+            // filter: 50% 或 100% commission 已 mark = 视为已下单
+            if (!q.commission50Marked && !q.commission100Marked) return;
+            if (!q.projNo || existingProjNos.has(q.projNo)) return;
+            collected.push({
+              projNo: q.projNo,
+              customerName: q.customerName || '',
+              customerPhone: q.customerContact || '',
+              customerAddress: q.customerAddress || '',
+              arrivalAddress: '',
+              salesperson: q.salesperson || username,
+              salespersonPhone: q.salespersonContact || '',
+              source: 'squirrel-designer',
+              orderedAt: q.commission50At || q.commission100At || q.lastModified || ''
+            });
           });
         } catch (err) { /* skip */ }
       }
@@ -1530,9 +1546,9 @@ createApp({
       importSelected.value = collected.map(() => true);
       cloudLoading.value = false;
       if (collected.length === 0) {
-        showToast('📡 没有新的 ordered quote', 'warn');
+        showToast('📡 没有新的已 commission 报价', 'warn');
       } else {
-        showToast(`📡 找到 ${collected.length} 条 ordered quote`, 'success');
+        showToast(`📡 找到 ${collected.length} 条已 commission 报价`, 'success');
       }
     }
 
