@@ -92,6 +92,11 @@
 - [x] v1.6 (2026-08-13): 一锅端 — B 自定义栏目 + C 拖拽换阶段 + D Dashboard 强化 + E Excel 导出 + F 单条打印
 - [x] v1.6.2 (2026-08-13): 修 import JSON + 同步 GAS URL
 - [x] v1.7 (2026-08-13): G 修小问题（拖拽点击 + Excel 自定义字段） + H 接入 backadmin
+- [x] v1.8 (2026-08-13): Calendar OAuth debug + 重新打开同步
+- [x] v1.8.2 (2026-08-13): 同步最终 GAS URL
+- [x] v2.0 (2026-08-14): 数据模型重构 — multi-dates, dynamic rows, shared notes, collapsible sections
+- [x] v2.0.1 (2026-08-14): 修复缺失 `</script>` 闭合标签
+- [x] v2.1 (2026-08-14): **云端导入改读 Squirrel Designer**（不是 backadmin）— 因为 SD 有 customerContact / salespersonContact 全字段
 
 ## Calendar 同步机制
 
@@ -110,6 +115,30 @@
   - 删除：删记录自动删 event
 - **Calendar ID**: `squirreldesigner9068@gmail.com` (公司主日历)
 - **存储**: 记录里加 `calendarEventId` 字段追踪 event，重保存时更新而非重建
+
+## 云端导入源（v2.1 改）
+
+**Squirrel Designer (报价系统) 是唯一云端导入源** — 不要再用 backadmin。
+
+| 系统 | 有 customerContact | 有 salespersonContact | 有 customerAddress | 适合导入? |
+|---|---|---|---|---|
+| **Squirrel Designer** | ✅ | ✅ | ✅ | **✅ 是** |
+| backadmin | ❌ | ❌ | ⚠️ 部分 | ❌ 否（缺电话） |
+
+**导入流程** (`fetchFromBackadmin` 函数):
+1. 遍历 10 个业务员 (`admin`, `test`, `SSD`, `PSD`, `FSD`, `JSD`, `TSD`, `VSD`, `TESD`, `ASD`)
+2. 调 SD `getQuoteList&username=X`
+3. 跳过 `stats_cache` cache 行
+4. filter: `commission50Marked || commission100Marked` = 已收订金 = 已下单
+5. 字段映射:
+   - `customerContact` → `customerPhone`
+   - `customerAddress` → `customerAddress`
+   - `salesperson`     → `salesperson`
+   - `salespersonContact` → `salespersonPhone`
+   - `commission50At / commission100At` → `orderedAt`
+
+**Squirrel Designer GAS URL**:
+`https://script.google.com/macros/s/AKfycbyOEmxMojsICWRgpLgII-fB1jniWTCMLBMSvwFUxAz6IhpZsdRnMRfENV2p88LOQ7cm/exec`
 
 ## 部署 v1.4 时额外步骤
 
