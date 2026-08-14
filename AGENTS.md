@@ -97,6 +97,7 @@
 - [x] v2.0 (2026-08-14): 数据模型重构 — multi-dates, dynamic rows, shared notes, collapsible sections
 - [x] v2.0.1 (2026-08-14): 修复缺失 `</script>` 闭合标签
 - [x] v2.1 (2026-08-14): **云端导入改读 Squirrel Designer**（不是 backadmin）— 因为 SD 有 customerContact / salespersonContact 全字段
+- [x] v2.1.1 (2026-08-14): filter 改 `orderedMarked` (不是 `commission50/100`) — 用户原话 "带'下单'字样"
 
 ## Calendar 同步机制
 
@@ -129,13 +130,20 @@
 1. 遍历 10 个业务员 (`admin`, `test`, `SSD`, `PSD`, `FSD`, `JSD`, `TSD`, `VSD`, `TESD`, `ASD`)
 2. 调 SD `getQuoteList&username=X`
 3. 跳过 `stats_cache` cache 行
-4. filter: `commission50Marked || commission100Marked` = 已收订金 = 已下单
+4. filter: `orderedMarked = true` (Squirrel Designer 「下单」复选框) — **不是** `commission50/100`
 5. 字段映射:
    - `customerContact` → `customerPhone`
    - `customerAddress` → `customerAddress`
    - `salesperson`     → `salesperson`
    - `salespersonContact` → `salespersonPhone`
-   - `commission50At / commission100At` → `orderedAt`
+   - `orderedAt` (fallback: `commission50At / commission100At / lastModified`)
+
+**`orderedMarked` vs `commission50/100` 区别（v2.1.1 关键）**：
+- `commission50Marked`: 收 50% 订金 (可能还没正式下单，ADD ON 报价也算)
+- `commission100Marked`: 收 100% 订金
+- `orderedMarked`: Squirrel Designer 报价页面**「下单」复选框** = 真正下单 = 用户原话 "带'下单'字样"
+- **正确做法**: filter 用 `orderedMarked`（不是 commission）
+- 错误做法: 用 `commission50/100` 会拉进 27 个仅订金未下单的 (如 ADD ON 报价)
 
 **Squirrel Designer GAS URL**:
 `https://script.google.com/macros/s/AKfycbyOEmxMojsICWRgpLgII-fB1jniWTCMLBMSvwFUxAz6IhpZsdRnMRfENV2p88LOQ7cm/exec`
