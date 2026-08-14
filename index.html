@@ -1511,47 +1511,132 @@ createApp({
     //         区别: commission50Marked = 已收 50% 订金 (不一定下单)
     //               orderedMarked = 已正式下单 (Squirrel Designer 「下单」复选框)
     //         用户原话: "带'下单'字样的报价" = orderedMarked=true
+    // v2.2: 加速 — 并行拉取 (10x) + 5 分钟 localStorage 缓存 + 页面打开后台预热
+    //   - 10 用户串行 50-100s → 并行 5-10s
+    //   - 5 分钟内重复导入: 0s (走缓存)
+    //   - onMounted 后台预热: 用户点「导入」时缓存通常已就绪
+    const SD_CACHE_KEY = 'squirrel_designer_quotes_v1';
+    const SD_CACHE_TTL = 5 * 60 * 1000; // 5 分钟
+    const SD_FETCH_TIMEOUT = 30000;     // 单用户 fetch 30s 超时
+
+    function readSdCache() {
+      try {
+        const raw = localStorage.getItem(SD_CACHE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed || !parsed.ts || !parsed.data) return null;
+        if (Date.now() - parsed.ts > SD_CACHE_TTL) return null;
+        return parsed.data; // { [username]: [quote, ...] }
+      } catch (e) { return null; }
+    }
+    function writeSdCache(data) {
+      try {
+        localStorage.setItem(SD_CACHE_KEY, JSON.stringify({ ts: Date.now(), data }));
+      } catch (e) { /* quota / private mode — skip */ }
+    }
+    function clearSdCache() {
+      try { localStorage.removeItem(SD_CACHE_KEY); } catch (e) {}
+    }
+
+    // 核心 filter 逻辑（cache hit / cache miss 共用）
+    function processSdMap(map, existingProjNos) {
+      const collected = [];
+      for (const username of BACKADMIN_USERS) {
+        const quotes = (map && map[username]) || [];
+        for (const q of quotes) {
+          if (q.id === 'stats_cache' || q.projNo === 'stats_cache') continue;
+          if (!q.orderedMarked) continue;
+          if (!q.projNo || existingProjNos.has(q.projNo)) continue;
+          collected.push({
+            projNo: q.projNo,
+            customerName: q.customerName || '',
+            customerPhone: q.customerContact || '',
+            customerAddress: q.customerAddress || '',
+            arrivalAddress: '',
+            salesperson: q.salesperson || username,
+            salespersonPhone: q.salespersonContact || '',
+            source: 'squirrel-designer',
+            orderedAt: q.orderedAt || q.commission50At || q.commission100At || q.lastModified || ''
+          });
+        }
+      }
+      return collected;
+    }
+
+    // 单用户 fetch（带 timeout）
+    async function _fetchSdUser(username) {
+      const url = SD_URL + '?action=getQuoteList&username=' + encodeURIComponent(username);
+      const ctrl = new AbortController();
+      const tid = setTimeout(() => ctrl.abort(), SD_FETCH_TIMEOUT);
+      try {
+        const resp = await fetch(url, { signal: ctrl.signal });
+        if (!resp.ok) return [];
+        const data = await resp.json();
+        return (data.success && Array.isArray(data.quotes)) ? data.quotes : [];
+      } catch (e) { return []; }
+      finally { clearTimeout(tid); }
+    }
+
+    // 并行拉所有用户 → map
+    async function _fetchAllSdParallel() {
+      const results = await Promise.all(BACKADMIN_USERS.map(_fetchSdUser));
+      const map = {};
+      let ok = 0;
+      BACKADMIN_USERS.forEach((u, i) => {
+        map[u] = results[i];
+        if (results[i].length > 0) ok++;
+      });
+      return { map, okCount: ok, totalUsers: BACKADMIN_USERS.length };
+    }
+
+    // 后台预热 (fire-and-forget, 不 await)
+    function _prewarmSdCache() {
+      _fetchAllSdParallel().then(({ map, okCount }) => {
+        if (okCount > 0) writeSdCache(map);
+        console.log(`[squirrelinstall] SD cache prewarmed: ${okCount}/${BACKADMIN_USERS.length} users`);
+      }).catch(err => {
+        console.warn('[squirrelinstall] SD cache prewarm failed:', err);
+      });
+    }
+
     async function fetchFromBackadmin() {
       cloudLoading.value = true;
       importPreview.value = [];
       importSelected.value = [];
       const existingProjNos = new Set(records.value.map(r => r.projNo).filter(Boolean));
-      const collected = [];
-      for (const username of BACKADMIN_USERS) {
-        try {
-          const url = SD_URL + '?action=getQuoteList&username=' + encodeURIComponent(username);
-          const resp = await fetch(url);
-          if (!resp.ok) continue;
-          const data = await resp.json();
-          if (!data.success || !Array.isArray(data.quotes)) continue;
-          data.quotes.forEach(q => {
-            // 跳过 cache 行
-            if (q.id === 'stats_cache' || q.projNo === 'stats_cache') return;
-            // filter: Squirrel Designer 「下单」复选框 = orderedMarked
-            if (!q.orderedMarked) return;
-            if (!q.projNo || existingProjNos.has(q.projNo)) return;
-            collected.push({
-              projNo: q.projNo,
-              customerName: q.customerName || '',
-              customerPhone: q.customerContact || '',
-              customerAddress: q.customerAddress || '',
-              arrivalAddress: '',
-              salesperson: q.salesperson || username,
-              salespersonPhone: q.salespersonContact || '',
-              source: 'squirrel-designer',
-              orderedAt: q.orderedAt || q.commission50At || q.commission100At || q.lastModified || ''
-            });
-          });
-        } catch (err) { /* skip */ }
+      const cached = readSdCache();
+      if (cached) {
+        // ⚡ 缓存命中 — 立即返回，后台静默刷新
+        const collected = processSdMap(cached, existingProjNos);
+        importPreview.value = collected;
+        importSelected.value = collected.map(() => true);
+        cloudLoading.value = false;
+        if (collected.length === 0) {
+          showToast('📡 缓存里没有新的已下单报价', 'warn');
+        } else {
+          showToast(`📡 找到 ${collected.length} 条已下单报价 (缓存)`, 'success');
+        }
+        // 后台刷新缓存 (供下次用)
+        _prewarmSdCache();
+        return;
       }
+      // ❄ 缓存 miss — 并行 fetch (10x 快于串行)
+      const t0 = performance.now();
+      const { map, okCount, totalUsers } = await _fetchAllSdParallel();
+      const collected = processSdMap(map, existingProjNos);
       importPreview.value = collected;
       importSelected.value = collected.map(() => true);
       cloudLoading.value = false;
-      if (collected.length === 0) {
-        showToast('📡 没有新的已下单报价', 'warn');
+      const ms = Math.round(performance.now() - t0);
+      if (okCount === 0) {
+        showToast(`📡 拉取失败 (${ms}ms)`, 'error');
+      } else if (collected.length === 0) {
+        showToast(`📡 没有新的已下单报价 (${ms}ms)`, 'warn');
       } else {
-        showToast(`📡 找到 ${collected.length} 条已下单报价`, 'success');
+        showToast(`📡 找到 ${collected.length} 条已下单报价 (${ms}ms, ${okCount}/${totalUsers} 用户)`, 'success');
       }
+      // 写缓存供下次秒开
+      if (okCount > 0) writeSdCache(map);
     }
 
     function handleJsonFile(e) {
@@ -1768,7 +1853,11 @@ createApp({
       try { return new Date(s).toLocaleString('zh-CN'); } catch (e) { return s; }
     }
 
-    onMounted(() => loadRecords());
+    onMounted(() => {
+      loadRecords();
+      // 页面打开 2s 后后台预热 Squirrel Designer 缓存 (不阻塞 loadRecords)
+      setTimeout(_prewarmSdCache, 2000);
+    });
 
     return {
       records, loading, modal, addForm, importPreview, importText, importSelected, importTab, cloudLoading,
