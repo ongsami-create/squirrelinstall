@@ -851,7 +851,7 @@
               {{ cloudLoading ? '⏳ 拉取中...' : '🔄 拉取已下单的报价' }}
             </button>
             <span style="margin-left: 10px; color: var(--subtext); font-size: 12px;">
-              从 Squirrel Designer 拉 commission50Marked / commission100Marked 的报价（带客户电话、地址、业务员电话）
+              从 Squirrel Designer 拉「下单」复选框已勾选的报价（带客户电话、地址、业务员电话）
             </span>
           </div>
           <div v-if="importPreview.length" class="form-section">
@@ -1506,9 +1506,11 @@ createApp({
       return importSelected.value.filter(Boolean).length;
     }
 
-    // 从 Squirrel Designer 拉已 commission 的 quote
-    // v2.1: 改读 Squirrel Designer (报价系统) — 它有 customerContact / salespersonContact / customerAddress 全字段
-    // filter: commission50Marked || commission100Marked = 已收订金 = 已下单
+    // 从 Squirrel Designer 拉已下单的 quote
+    // v2.1.1: 改用 orderedMarked 字段 (= Squirrel Designer 「下单」复选框)，不是 commission50/100
+    //         区别: commission50Marked = 已收 50% 订金 (不一定下单)
+    //               orderedMarked = 已正式下单 (Squirrel Designer 「下单」复选框)
+    //         用户原话: "带'下单'字样的报价" = orderedMarked=true
     async function fetchFromBackadmin() {
       cloudLoading.value = true;
       importPreview.value = [];
@@ -1525,8 +1527,8 @@ createApp({
           data.quotes.forEach(q => {
             // 跳过 cache 行
             if (q.id === 'stats_cache' || q.projNo === 'stats_cache') return;
-            // filter: 50% 或 100% commission 已 mark = 视为已下单
-            if (!q.commission50Marked && !q.commission100Marked) return;
+            // filter: Squirrel Designer 「下单」复选框 = orderedMarked
+            if (!q.orderedMarked) return;
             if (!q.projNo || existingProjNos.has(q.projNo)) return;
             collected.push({
               projNo: q.projNo,
@@ -1537,7 +1539,7 @@ createApp({
               salesperson: q.salesperson || username,
               salespersonPhone: q.salespersonContact || '',
               source: 'squirrel-designer',
-              orderedAt: q.commission50At || q.commission100At || q.lastModified || ''
+              orderedAt: q.orderedAt || q.commission50At || q.commission100At || q.lastModified || ''
             });
           });
         } catch (err) { /* skip */ }
@@ -1546,9 +1548,9 @@ createApp({
       importSelected.value = collected.map(() => true);
       cloudLoading.value = false;
       if (collected.length === 0) {
-        showToast('📡 没有新的已 commission 报价', 'warn');
+        showToast('📡 没有新的已下单报价', 'warn');
       } else {
-        showToast(`📡 找到 ${collected.length} 条已 commission 报价`, 'success');
+        showToast(`📡 找到 ${collected.length} 条已下单报价`, 'success');
       }
     }
 
