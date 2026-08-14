@@ -99,6 +99,7 @@
 - [x] v2.1 (2026-08-14): **云端导入改读 Squirrel Designer**（不是 backadmin）— 因为 SD 有 customerContact / salespersonContact 全字段
 - [x] v2.1.1 (2026-08-14): filter 改 `orderedMarked` (不是 `commission50/100`) — 用户原话 "带'下单'字样"
 - [x] v2.2 (2026-08-14): **加速云端导入** — 并行拉取 (10x) + 5 分钟 localStorage 缓存 + 页面打开后台预热
+- [x] v3.0 (2026-08-14): **阶段锁定 + 多行数据表 + 完成按钮 + 数据模型大改** — 见下
 
 ## Calendar 同步机制
 
@@ -160,6 +161,46 @@
 | 首次页面打开 + 立即点导入 | 50-100s | 5-10s (并行) 或 0s (若预热已完成) |
 | 5 分钟内再次导入 | 50-100s | 0s (走缓存) |
 | 预热完成后再导入 | 50-100s | 0s (走缓存) |
+
+## v3.0 阶段锁定 + 多行数据模型
+
+**数据模型 v3.0 (跟 v2.0 完全不同)**:
+```js
+// 旧 (v2.0): 单值 + 自由 rows
+order:     { dates, factory, rows: [{text, confirmed}] }
+container: { dates, factory, company, trackingNo, quantity, rows: [{text}] }
+arrival:   { dates, factory, company, trackingNo, quantity, rows: [{text, confirmed}], deliveryTime }
+install:   { dates, installers }
+
+// 新 (v3.0): 全 rows
+order:     { dates, rows: [{factory, note}] }                                  // 下单工厂 + 说明
+container: { dates, rows: [{factory, company, trackingNo, quantity}] }       // 4 字段一行
+arrival:   { dates, rows: [{confirmed}] }                                      // 4 字段从装柜派生
+install:   { dates, installers, completed, completedAt }                       // 新增 completed
+```
+
+**核心规则**:
+- 阶段锁定: `isStageLocked(stageKey) = currentRecord.stage !== stageKey` — 当前 stage 之外的 section 全锁 (CSS .locked)
+- 行数 cascade: `_syncRowCounts()` — 装柜 ≥ 下单, 抵达 ≥ 装柜
+- 抵达 4 字段派生显示: `getOrderFactory(idx)` / `getContainerField(idx, 'company'|'trackingNo'|'quantity')`
+- 抵达.quantity bug fix: 从 container.rows[idx].quantity 派生 (不存)
+- 安装完成: `completeInstall()` → completed=true, completedAt=now, 卡片 .completed class 变灰 + 徽章
+- 移除 auto-progress: stage 由用户手动选 (下拉/拖拽)
+- 打印按钮: 只在 `currentRecord.stage === 'install'` 显示
+
+**迁移**:
+- 客户端 `migrateStages()`: openDetail / loadRecords 自动检测+迁移
+- 服务端 `migrateStagesServer()` + `sanitizeStages()`: GAS 端同步
+- 幂等: 重复调用结果一致 (10/10 测试通过)
+
+**Calendar 显示规则 (v3.0)**:
+- 下单: 只日期, **不显示 factory**
+- 装柜: 保留 (company / trackingNo / quantity)
+- 抵达: 只日期, **不显示 deliveryTime**
+- 安装: 加 **安装人员名字 + 电话**
+- 标题数量: 从 container.rows[].quantity 求和 (多行)
+
+**部署注意**: v3.0 改了 Code.gs, GAS 端要部署新版本 (前端的 auto-migrate 保证即使 GAS 没部署也能用, 但 calendar description 不会更新到 v3 规则)
 
 **Squirrel Designer GAS URL**:
 `https://script.google.com/macros/s/AKfycbyOEmxMojsICWRgpLgII-fB1jniWTCMLBMSvwFUxAz6IhpZsdRnMRfENV2p88LOQ7cm/exec`
