@@ -621,10 +621,14 @@
     font-style: italic;
   }
 
-  /* v3.0: 已完成卡片 */
+  /* v3.0 fix: 已完成卡片 — 灰色 + 不可拖动 */
   .card.completed {
     opacity: 0.55;
     filter: grayscale(70%);
+    cursor: not-allowed;
+  }
+  .card.completed:active {
+    cursor: not-allowed;
   }
   .card-completed-badge {
     margin-top: 6px;
@@ -876,7 +880,8 @@
         <div v-else-if="recordsByStage[stage.key].length === 0" class="empty">暂无工程</div>
         <div v-for="r in recordsByStage[stage.key]" :key="r.id"
              class="card" :class="['stage-' + r.stage, { dragging: dragId === r.id, completed: isCompleted(r) }]"
-             draggable="true"
+             :draggable="!isCompleted(r)"
+             :title="isCompleted(r) ? '已完成, 不可移动' : ''"
              @dragstart="onDragStart($event, r)"
              @dragend="onDragEnd"
              @click="openDetail(r)">
@@ -1207,6 +1212,11 @@
               <input type="date" class="form-input" :disabled="isStageLocked('arrival')"
                      @change="addStageDate('arrival', $event.target.value); $event.target.value=''">
             </div>
+            <!-- v3.0 fix: 送货日期 (单日期, 用于日历事件) -->
+            <div class="form-group">
+              <label class="form-label">送货日期 (单日期, 用于日历事件)</label>
+              <input type="date" class="form-input" v-model="currentRecord.stages.arrival.deliveryDate" :disabled="isStageLocked('arrival')">
+            </div>
             <div class="form-group">
               <label class="form-label">抵达明细 (4 字段从下单/装柜派生 + 确认勾选)</label>
               <table class="data-table">
@@ -1343,11 +1353,12 @@ const STAGES = [
 // v3.0 数据模型: 多行 rows (下单工厂 + 说明) / (装柜 4 字段) / (抵达 4 字段 + 确认勾选)
 // 抵达的 factory/company/trackingNo/quantity 从 container.rows 派生 (不存)
 // 安装新增 completed / completedAt
+// v3.0 fix: 抵达加 deliveryDate (送货日期, 用于日历)
 function emptyStages() {
   return {
     order:     { dates: [], rows: [{ factory: '', note: '' }] },
     container: { dates: [], rows: [{ factory: '', company: '', trackingNo: '', quantity: 0 }] },
-    arrival:   { dates: [], rows: [{ confirmed: false }] },
+    arrival:   { dates: [], deliveryDate: '', rows: [{ confirmed: false }] },
     install:   { dates: [], installers: [{ name: '', phone: '' }], completed: false, completedAt: '' }
   };
 }
@@ -1357,6 +1368,7 @@ function emptyStages() {
 // - 旧 container 单值 + rows[].text → container.rows[].factory + .company + .trackingNo + .quantity
 // - 旧 arrival 单值 → arrival.rows[].confirmed (其余从 container 派生)
 // - 旧 install + completed (新增)
+// v3.0 fix: 新 schema 输入也跑 normalize, 防缺漏的 stage (比如 input 只有 container 没有 arrival)
 function migrateStages(stages) {
   if (!stages || typeof stages !== 'object') return emptyStages();
   const o = stages.order || {};
@@ -1364,18 +1376,15 @@ function migrateStages(stages) {
   const a = stages.arrival || {};
   const i = stages.install || {};
 
-  // 检测是否已迁移: order.rows[0].note 是新 schema
-  const isNew = Array.isArray(o.rows) && o.rows.length > 0 && (
-    'note' in o.rows[0] || 'factory' in o.rows[0] || o.rows[0].text === undefined
-  );
-  if (isNew) return stages; // 已是新 schema, 不动
-
   // ===== 下单 =====
   const orderRows = [];
   if (o.factory) orderRows.push({ factory: o.factory, note: '' });
   if (Array.isArray(o.rows)) {
+    // v3.0 fix: 新 schema 输入 (rows[0].note/.factory) 也走同一逻辑
     o.rows.forEach(r => {
-      if (r && r.text) orderRows.push({ factory: '', note: r.text });
+      if (!r) return;
+      if (r.text !== undefined && r.text) orderRows.push({ factory: '', note: r.text });  // 旧
+      else if (r.factory !== undefined || r.note !== undefined) orderRows.push({ factory: r.factory || '', note: r.note || '' });  // 新
     });
   }
   if (orderRows.length === 0) orderRows.push({ factory: '', note: '' });
@@ -1392,8 +1401,18 @@ function migrateStages(stages) {
   }
   if (Array.isArray(c.rows)) {
     c.rows.forEach(r => {
-      if (r && r.text) {
-        containerRows.push({ factory: '', company: '', trackingNo: '', quantity: 0, _note: r.text });
+      if (!r) return;
+      if (r.text !== undefined && r.text) {
+        // 旧 schema row.text
+        containerRows.push({ factory: '', company: '', trackingNo: '', quantity: 0 });
+      } else {
+        // 新 schema row.factory/company/trackingNo/quantity
+        containerRows.push({
+          factory: r.factory || '',
+          company: r.company || '',
+          trackingNo: r.trackingNo || '',
+          quantity: r.quantity || 0
+        });
       }
     });
   }
@@ -1403,7 +1422,13 @@ function migrateStages(stages) {
   const arrivalRows = [];
   if (Array.isArray(a.rows)) {
     a.rows.forEach((r, idx) => {
-      if (r) arrivalRows.push({ confirmed: r.confirmed || false });
+      if (!r) return;
+      if (r.text !== undefined) {
+        // 旧 schema: 保留 confirmed, 丢弃 text
+        arrivalRows.push({ confirmed: r.confirmed || false });
+      } else {
+        arrivalRows.push({ confirmed: r.confirmed || false });
+      }
     });
   }
   // 同步到 containerRows 长度
@@ -1411,6 +1436,9 @@ function migrateStages(stages) {
     arrivalRows.push({ confirmed: false });
   }
   if (arrivalRows.length === 0) arrivalRows.push({ confirmed: false });
+  // v3.0 fix: 迁移老 deliveryTime → deliveryDate
+  let deliveryDate = a.deliveryDate || '';
+  if (!deliveryDate && a.deliveryTime) deliveryDate = a.deliveryTime.substring(0, 10);
 
   // ===== 安装 =====
   const installData = {
@@ -1424,7 +1452,7 @@ function migrateStages(stages) {
   return {
     order:     { dates: Array.isArray(o.dates) ? o.dates.slice() : [], rows: orderRows },
     container: { dates: Array.isArray(c.dates) ? c.dates.slice() : [], rows: containerRows },
-    arrival:   { dates: Array.isArray(a.dates) ? a.dates.slice() : [], rows: arrivalRows },
+    arrival:   { dates: Array.isArray(a.dates) ? a.dates.slice() : [], deliveryDate: deliveryDate, rows: arrivalRows },
     install:   installData
   };
 }
@@ -1545,7 +1573,11 @@ createApp({
       if (r.success) {
         // v3.0: 客户端迁移老 schema 记录 (防 GAS 没部署 v3 sanitize)
         records.value = (r.records || []).map(rec => {
-          if (rec && rec.stages) rec.stages = migrateStages(rec.stages);
+          if (rec && rec.stages) {
+            rec.stages = migrateStages(rec.stages);
+            // v3.0 fix: 迁移后跑 cascade, 确保装柜/抵达行数一致
+            _ensureRowCascade(rec.stages);
+          }
           return rec;
         });
         showToast(`已加载 ${records.value.length} 条工程`, 'success');
@@ -1629,13 +1661,22 @@ createApp({
     // v3.0: 行数 cascade — 装柜 ≥ 下单, 抵达 ≥ 装柜
     function _syncRowCounts() {
       const s = currentRecord.value.stages;
-      const orderLen = (s.order && s.order.rows) ? s.order.rows.length : 0;
-      const containerLen = (s.container && s.container.rows) ? s.container.rows.length : 0;
-      while (s.container.rows.length < orderLen) {
-        s.container.rows.push({ factory: '', company: '', trackingNo: '', quantity: 0 });
+      _ensureRowCascade(s);
+    }
+    // v3.0 fix: 独立 cascade 函数 (可以在 openDetail / loadRecords 调, 不依赖 currentRecord)
+    function _ensureRowCascade(stages) {
+      if (!stages) return;
+      const orderLen = (stages.order && stages.order.rows) ? stages.order.rows.length : 0;
+      const containerLen = (stages.container && stages.container.rows) ? stages.container.rows.length : 0;
+      if (stages.container && stages.container.rows) {
+        while (stages.container.rows.length < orderLen) {
+          stages.container.rows.push({ factory: '', company: '', trackingNo: '', quantity: 0 });
+        }
       }
-      while (s.arrival.rows.length < containerLen) {
-        s.arrival.rows.push({ confirmed: false });
+      if (stages.arrival && stages.arrival.rows) {
+        while (stages.arrival.rows.length < containerLen) {
+          stages.arrival.rows.push({ confirmed: false });
+        }
       }
     }
 
@@ -1719,6 +1760,8 @@ createApp({
       // v3.0: 迁移旧 schema 到新 schema
       const cloned = JSON.parse(JSON.stringify(record));
       cloned.stages = migrateStages(cloned.stages);
+      // v3.0 fix: 迁移后跑一次 cascade, 防 装柜 2 行但抵达 1 行
+      _ensureRowCascade(cloned.stages);
       currentRecord.value = cloned;
       // 默认折叠；当前阶段的 section 自动展开
       const sk = currentRecord.value.stage || 'order';
@@ -2039,6 +2082,8 @@ createApp({
       const containerRowsStr = (s.container && s.container.rows || []).map(row =>
         (row.company || '—') + ' | #' + (row.trackingNo || '—') + ' | 数量: ' + (row.quantity || 0)
       ).join('; ') || '—';
+      // v3.0 fix: 抵达 优先用送货日期 (deliveryDate)
+      const arrivalDateStr = (s.arrival && s.arrival.deliveryDate) ? s.arrival.deliveryDate : fmtDates(s.arrival && s.arrival.dates);
       const arrivalRowsStr = (s.arrival && s.arrival.rows || []).map(row =>
         '确认: ' + (row.confirmed ? '✓' : '—')
       ).join('; ') || '—';
@@ -2078,7 +2123,7 @@ createApp({
       <tr><th>阶段</th><th>日期</th><th>详情</th></tr>
       <tr><td>🛒 下单</td><td>${fmtDates(s.order && s.order.dates)}</td><td>${escapeHtml(orderRowsStr)}</td></tr>
       <tr><td>📦 装柜</td><td>${fmtDates(s.container && s.container.dates)}</td><td>${escapeHtml(containerRowsStr)}</td></tr>
-      <tr><td>🚚 抵达</td><td>${fmtDates(s.arrival && s.arrival.dates)}</td><td>${escapeHtml(arrivalRowsStr)}</td></tr>
+      <tr><td>🚚 抵达</td><td>${escapeHtml(arrivalDateStr)}</td><td>${escapeHtml(arrivalRowsStr)}</td></tr>
       <tr><td>🔨 安装</td><td>${fmtDates(s.install && s.install.dates)}${installStatus}</td><td>${escapeHtml(installPeople)}</td></tr>
     </table>
   </div>
@@ -2116,6 +2161,7 @@ createApp({
           '装柜明细': containerRows,
           '数量合计': totalQty,
           '抵达日期': fmtDates(s.arrival && s.arrival.dates),
+          '送货日期': (s.arrival && s.arrival.deliveryDate) || '',
           '已确认/总行数': arrivalConfirm + '/' + ((s.arrival && s.arrival.rows || []).length),
           '安装日期': fmtDates(s.install && s.install.dates),
           '安装人员': (s.install && s.install.installers || []).map(i => i.name + (i.phone ? ' (' + i.phone + ')' : '')).join('; '),
@@ -2139,6 +2185,11 @@ createApp({
 
     // ===== Drag & Drop =====
     function onDragStart(e, r) {
+      // v3.0 fix: 已完成卡片不能拖动
+      if (isCompleted(r)) {
+        e.preventDefault();
+        return;
+      }
       dragId.value = r.id;
       e.dataTransfer.effectAllowed = 'move';
       try { e.dataTransfer.setData('text/plain', r.id); } catch (err) {}

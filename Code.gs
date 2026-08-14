@@ -96,6 +96,15 @@ function getStageColor(stage) {
   return map[stage] || CalendarApp.EventColor.GRAY;
 }
 
+// v3.0 fix: 安装完成 → 日历 桦木灰 (Graphite 8)
+// 用户原话: "点击✓ 完成安装日历呈现的颜色为桦木灰"
+function getEventColor(record) {
+  if (record && record.stages && record.stages.install && record.stages.install.completed) {
+    return CalendarApp.EventColor.GRAY;  // Graphite 8 = 桦木灰 (closest Google color)
+  }
+  return getStageColor(record.stage);
+}
+
 function buildEventTitle(record) {
   // 标题: [projNo] 客户名字 | 客户电话 | 客户地址 | 数量 | 业务员 (电话)
   const r = record;
@@ -124,7 +133,9 @@ function buildEventDescription(record) {
   // 装柜: 保留 company / trackingNo / quantity
   const orderFactoryLine = '';  // v3.0: 不显示 factory 名字
   const containerLine = '📦 装柜: ' + fmtDateList(s.container && s.container.dates) + (s.container && s.container.company ? ' | ' + s.container.company : '') + (s.container && s.container.trackingNo ? ' | ' + s.container.trackingNo : '') + (s.container && s.container.quantity ? ' | 数量:' + s.container.quantity : '');
-  const arrivalLine = '🚚 抵达: ' + fmtDateList(s.arrival && s.arrival.dates);  // v3.0: 不显示 deliveryTime
+  // v3.0 fix: 抵达优先用送货日期 (deliveryDate) 显示
+  const arrivalDateStr = (s.arrival && s.arrival.deliveryDate) ? s.arrival.deliveryDate : fmtDateList(s.arrival && s.arrival.dates);
+  const arrivalLine = '🚚 抵达: ' + arrivalDateStr;
   // v3.0: 安装显示安装人员名字和电话
   let installLine = '🔨 安装: ' + fmtDateList(s.install && s.install.dates);
   if (s.install && Array.isArray(s.install.installers) && s.install.installers.length) {
@@ -174,8 +185,12 @@ function getEventDateRange(record) {
   if (stage === 'install') {
     if (s.install && Array.isArray(s.install.dates)) dates.push(...s.install.dates);
   } else if (stage === 'arrival') {
-    // v3.0: 抵达只显示抵达日期 (不显示 deliveryTime, 因为 schema 里没这字段了)
-    if (s.arrival && Array.isArray(s.arrival.dates)) dates.push(...s.arrival.dates);
+    // v3.0 fix: 优先用送货日期 (deliveryDate) 字段, 缺失才 fallback 到抵达.dates
+    if (s.arrival && s.arrival.deliveryDate) {
+      dates.push(s.arrival.deliveryDate);
+    } else if (s.arrival && Array.isArray(s.arrival.dates)) {
+      dates.push(...s.arrival.dates);
+    }
   } else if (stage === 'container') {
     if (s.container && Array.isArray(s.container.dates)) dates.push(...s.container.dates);
   } else if (stage === 'order') {
@@ -220,7 +235,8 @@ function syncToCalendar(recordId) {
 
   const title = buildEventTitle(record);
   const desc = buildEventDescription(record);
-  const color = getStageColor(record.stage);
+  // v3.0 fix: 已完成 → 桦木灰, 否则用阶段颜色
+  const color = getEventColor(record);
 
   let event;
   let action = 'created';
@@ -290,7 +306,7 @@ function emptyStages() {
   return {
     order:     { dates: [], rows: [{ factory: '', note: '' }] },
     container: { dates: [], rows: [{ factory: '', company: '', trackingNo: '', quantity: 0 }] },
-    arrival:   { dates: [], rows: [{ confirmed: false }] },
+    arrival:   { dates: [], deliveryDate: '', rows: [{ confirmed: false }] },
     install:   { dates: [], installers: [{ name: '', phone: '' }], completed: false, completedAt: '' }
   };
 }
@@ -308,6 +324,9 @@ function sanitizeStages(raw) {
   // Ensure types
   ['order', 'container', 'arrival', 'install'].forEach(k => {
     if (!Array.isArray(base[k].dates)) base[k].dates = [];
+    if (k === 'arrival') {
+      if (typeof base[k].deliveryDate !== 'string') base[k].deliveryDate = '';
+    }
     if (k === 'install') {
       if (!Array.isArray(base[k].installers)) base[k].installers = [];
       base[k].completed = !!base[k].completed;
@@ -316,7 +335,26 @@ function sanitizeStages(raw) {
       if (!Array.isArray(base[k].rows)) base[k].rows = [];
     }
   });
+  // v3.0 fix: 迁移后跑 cascade
+  _ensureRowCascadeServer(base);
   return base;
+}
+
+// v3.0 fix: 服务端 cascade
+function _ensureRowCascadeServer(stages) {
+  if (!stages) return;
+  const orderLen = (stages.order && stages.order.rows) ? stages.order.rows.length : 0;
+  const containerLen = (stages.container && stages.container.rows) ? stages.container.rows.length : 0;
+  if (stages.container && stages.container.rows) {
+    while (stages.container.rows.length < orderLen) {
+      stages.container.rows.push({ factory: '', company: '', trackingNo: '', quantity: 0 });
+    }
+  }
+  if (stages.arrival && stages.arrival.rows) {
+    while (stages.arrival.rows.length < containerLen) {
+      stages.arrival.rows.push({ confirmed: false });
+    }
+  }
 }
 
 // v3.0: 检测 stages 是否已是新 schema
@@ -342,7 +380,11 @@ function migrateStagesServer(s) {
   const orderRows = [];
   if (o.factory) orderRows.push({ factory: o.factory, note: '' });
   if (Array.isArray(o.rows)) {
-    o.rows.forEach(r => { if (r && r.text) orderRows.push({ factory: '', note: r.text }); });
+    o.rows.forEach(r => {
+      if (!r) return;
+      if (r.text !== undefined && r.text) orderRows.push({ factory: '', note: r.text });
+      else if (r.factory !== undefined || r.note !== undefined) orderRows.push({ factory: r.factory || '', note: r.note || '' });
+    });
   }
   if (orderRows.length === 0) orderRows.push({ factory: '', note: '' });
 
@@ -351,7 +393,14 @@ function migrateStagesServer(s) {
     containerRows.push({ factory: c.factory || '', company: c.company || '', trackingNo: c.trackingNo || '', quantity: c.quantity || 0 });
   }
   if (Array.isArray(c.rows)) {
-    c.rows.forEach(r => { if (r && r.text) containerRows.push({ factory: '', company: '', trackingNo: '', quantity: 0, _note: r.text }); });
+    c.rows.forEach(r => {
+      if (!r) return;
+      if (r.text !== undefined && r.text) {
+        containerRows.push({ factory: '', company: '', trackingNo: '', quantity: 0 });
+      } else {
+        containerRows.push({ factory: r.factory || '', company: r.company || '', trackingNo: r.trackingNo || '', quantity: r.quantity || 0 });
+      }
+    });
   }
   if (containerRows.length === 0) containerRows.push({ factory: '', company: '', trackingNo: '', quantity: 0 });
 
@@ -361,6 +410,9 @@ function migrateStagesServer(s) {
   }
   while (arrivalRows.length < containerRows.length) arrivalRows.push({ confirmed: false });
   if (arrivalRows.length === 0) arrivalRows.push({ confirmed: false });
+  // v3.0 fix: 迁移老 deliveryTime → deliveryDate
+  let deliveryDate = a.deliveryDate || '';
+  if (!deliveryDate && a.deliveryTime) deliveryDate = a.deliveryTime.substring(0, 10);
 
   const installData = {
     dates: Array.isArray(i.dates) ? i.dates.slice() : [],
@@ -373,7 +425,7 @@ function migrateStagesServer(s) {
   return {
     order:     { dates: Array.isArray(o.dates) ? o.dates.slice() : [], rows: orderRows },
     container: { dates: Array.isArray(c.dates) ? c.dates.slice() : [], rows: containerRows },
-    arrival:   { dates: Array.isArray(a.dates) ? a.dates.slice() : [], rows: arrivalRows },
+    arrival:   { dates: Array.isArray(a.dates) ? a.dates.slice() : [], deliveryDate: deliveryDate, rows: arrivalRows },
     install:   installData
   };
 }
