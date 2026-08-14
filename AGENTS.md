@@ -98,6 +98,7 @@
 - [x] v2.0.1 (2026-08-14): 修复缺失 `</script>` 闭合标签
 - [x] v2.1 (2026-08-14): **云端导入改读 Squirrel Designer**（不是 backadmin）— 因为 SD 有 customerContact / salespersonContact 全字段
 - [x] v2.1.1 (2026-08-14): filter 改 `orderedMarked` (不是 `commission50/100`) — 用户原话 "带'下单'字样"
+- [x] v2.2 (2026-08-14): **加速云端导入** — 并行拉取 (10x) + 5 分钟 localStorage 缓存 + 页面打开后台预热
 
 ## Calendar 同步机制
 
@@ -144,6 +145,21 @@
 - `orderedMarked`: Squirrel Designer 报价页面**「下单」复选框** = 真正下单 = 用户原话 "带'下单'字样"
 - **正确做法**: filter 用 `orderedMarked`（不是 commission）
 - 错误做法: 用 `commission50/100` 会拉进 27 个仅订金未下单的 (如 ADD ON 报价)
+
+**性能优化（v2.2 关键）**：
+- **并行 fetch** (`Promise.all`): 10 用户串行 50-100s → 并行 5-10s
+- **5 分钟 localStorage 缓存** (key: `squirrel_designer_quotes_v1`): 5 分钟内重复导入 0s
+- **后台预热** (`onMounted` 后 2s 触发): 页面打开即 fire-and-forget 拉 SD 缓存
+  - 预热**必须并行**，否则 50-100s 太长，预热白做
+  - 不阻塞 `loadRecords` (主 GAS)
+- **30s 单用户 timeout** (`AbortController`): 1 用户卡住不阻塞其他 9 个
+
+**速度对比**:
+| 场景 | 旧 (v2.1.1) | 新 (v2.2) |
+|---|---|---|
+| 首次页面打开 + 立即点导入 | 50-100s | 5-10s (并行) 或 0s (若预热已完成) |
+| 5 分钟内再次导入 | 50-100s | 0s (走缓存) |
+| 预热完成后再导入 | 50-100s | 0s (走缓存) |
 
 **Squirrel Designer GAS URL**:
 `https://script.google.com/macros/s/AKfycbyOEmxMojsICWRgpLgII-fB1jniWTCMLBMSvwFUxAz6IhpZsdRnMRfENV2p88LOQ7cm/exec`
