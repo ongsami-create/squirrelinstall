@@ -788,6 +788,15 @@
         <h1>Squirrel Install</h1>
         <div class="sub">下单到安装追踪系统</div>
       </div>
+      <!-- v3.0 fix: 左上角 Google Calendar 按钮 -->
+      <a class="btn btn-secondary calendar-link"
+         href="https://calendar.google.com/calendar/embed?src=squirreldesigner9068%40gmail.com&ctz=Asia%2FKuala_Lumpur"
+         target="_blank"
+         rel="noopener"
+         title="打开 Google 日历 (新窗口)"
+         style="margin-left: 12px;">
+        📅 Google 日历
+      </a>
     </div>
     <div class="search-box">
       <span class="search-icon">🔍</span>
@@ -1306,7 +1315,8 @@
               </button>
               <div v-else style="display: flex; gap: 8px; align-items: center;">
                 <span style="color: var(--success); font-weight: 600;">✓ 已完成 ({{ formatDate(currentRecord.stages.install.completedAt) }})</span>
-                <button class="uncomplete-btn" :disabled="isStageLocked('install')" @click="uncompleteInstall">撤销完成</button>
+                <!-- v3.0 fix: 撤销完成按钮始终可点 (即使 section 锁了) -->
+                <button class="uncomplete-btn" @click="uncompleteInstall">撤销完成</button>
               </div>
             </div>
           </div>
@@ -1617,9 +1627,13 @@ createApp({
     }
 
     // v3.0: 阶段是否锁定 (current stage 之外的都锁)
+    // v3.0 fix: 安装完成后, install 自己也锁 (用户不能再改)
     function isStageLocked(stageKey) {
       const r = currentRecord.value;
       if (!r) return true;
+      if (stageKey === 'install' && r.stages && r.stages.install && r.stages.install.completed) {
+        return true;
+      }
       return r.stage !== stageKey;
     }
 
@@ -2079,11 +2093,12 @@ createApp({
       const orderRowsStr = (s.order && s.order.rows || []).map(row =>
         (row.factory || '—') + (row.note ? ' / ' + row.note : '')
       ).join('; ') || '—';
-      const containerRowsStr = (s.container && s.container.rows || []).map(row =>
-        (row.company || '—') + ' | #' + (row.trackingNo || '—') + ' | 数量: ' + (row.quantity || 0)
+      // v3.0 fix: 装柜 多行 — company / trackingNo / quantity 全部
+      const containerRowsStr = (s.container && s.container.rows || []).map((row, i) =>
+        (i + 1) + '. ' + (row.company || '—') + ' | #' + (row.trackingNo || '—') + ' | 数量: ' + (row.quantity || 0)
       ).join('; ') || '—';
-      // v3.0 fix: 抵达 优先用送货日期 (deliveryDate)
-      const arrivalDateStr = (s.arrival && s.arrival.deliveryDate) ? s.arrival.deliveryDate : fmtDates(s.arrival && s.arrival.dates);
+      // v3.0 fix: 抵达 显示抵达时间 + 送货时间
+      const arrivalDateStr = fmtDates(s.arrival && s.arrival.dates) + ((s.arrival && s.arrival.deliveryDate) ? ' | 送货: ' + s.arrival.deliveryDate : '');
       const arrivalRowsStr = (s.arrival && s.arrival.rows || []).map(row =>
         '确认: ' + (row.confirmed ? '✓' : '—')
       ).join('; ') || '—';

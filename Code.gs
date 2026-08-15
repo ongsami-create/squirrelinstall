@@ -129,13 +129,27 @@ function buildEventTitle(record) {
 
 function buildEventDescription(record) {
   const s = record.stages || {};
-  // v3.0: 下单只显示日期; 抵达只显示日期; 安装显示人员
-  // 装柜: 保留 company / trackingNo / quantity
+  // v3.0: 下单只显示日期; 抵达显示日期+送货时间; 安装显示人员
+  // 装柜: 从 container.rows[i] 拼装多行 (物流编号 + 数量)
   const orderFactoryLine = '';  // v3.0: 不显示 factory 名字
-  const containerLine = '📦 装柜: ' + fmtDateList(s.container && s.container.dates) + (s.container && s.container.company ? ' | ' + s.container.company : '') + (s.container && s.container.trackingNo ? ' | ' + s.container.trackingNo : '') + (s.container && s.container.quantity ? ' | 数量:' + s.container.quantity : '');
-  // v3.0 fix: 抵达优先用送货日期 (deliveryDate) 显示
-  const arrivalDateStr = (s.arrival && s.arrival.deliveryDate) ? s.arrival.deliveryDate : fmtDateList(s.arrival && s.arrival.dates);
-  const arrivalLine = '🚚 抵达: ' + arrivalDateStr;
+  let containerLine = '📦 装柜: ' + fmtDateList(s.container && s.container.dates);
+  if (s.container && Array.isArray(s.container.rows) && s.container.rows.length) {
+    const rowParts = [];
+    s.container.rows.forEach((row, i) => {
+      if (!row) return;
+      const fields = [];
+      if (row.company) fields.push(row.company);
+      if (row.trackingNo) fields.push('#' + row.trackingNo);
+      if (row.quantity) fields.push('数量:' + row.quantity);
+      if (fields.length) rowParts.push((i + 1) + '. ' + fields.join(' | '));
+    });
+    if (rowParts.length) containerLine += ' | ' + rowParts.join('; ');
+  }
+  // v3.0 fix: 抵达 显示抵达时间 + 送货时间
+  let arrivalLine = '🚚 抵达: ' + fmtDateList(s.arrival && s.arrival.dates);
+  if (s.arrival && s.arrival.deliveryDate) {
+    arrivalLine += ' | 送货: ' + s.arrival.deliveryDate;
+  }
   // v3.0: 安装显示安装人员名字和电话
   let installLine = '🔨 安装: ' + fmtDateList(s.install && s.install.dates);
   if (s.install && Array.isArray(s.install.installers) && s.install.installers.length) {
