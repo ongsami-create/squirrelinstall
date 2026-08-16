@@ -72,29 +72,27 @@
     -webkit-backdrop-filter: saturate(180%) blur(20px);
     backdrop-filter: saturate(180%) blur(20px);
     border-bottom: 1px solid var(--separator);
-    padding: 10px 24px;
+    padding: 8px 24px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     position: sticky;
     top: 0;
     z-index: 100;
+    gap: 12px;
   }
-  .brand { display: flex; align-items: center; gap: 12px; }
+  .topbar > .brand { flex-shrink: 0; }
+  .brand { display: flex; align-items: center; gap: 14px; }
   .logo { font-size: 22px; }
   .brand h1 { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
   .brand .sub { color: var(--text-secondary); font-size: 11px; margin-top: -2px; }
-  .brand-mark { height: 28px; background: white; border-radius: 6px; padding: 3px 6px; object-fit: contain; }
-  .actions { display: flex; gap: 6px; align-items: center; }
-  /* macOS Traffic Lights (装饰, 让顶栏像 macOS 窗口) */
-  .traffic-lights { display: flex; gap: 8px; margin-right: 12px; }
-  .traffic-lights span {
-    width: 12px; height: 12px; border-radius: 50%;
-    box-shadow: inset 0 0 0 0.5px rgba(0,0,0,0.1);
+  /* v3.1 fix: SQUIRREL LOGO 大, 靠最左侧, 无白底 */
+  .brand-mark {
+    height: 64px; width: auto;
+    object-fit: contain;
+    align-self: center;
   }
-  .traffic-lights .tl-red { background: #FF5F57; }
-  .traffic-lights .tl-yellow { background: #FEBC2E; }
-  .traffic-lights .tl-green { background: #28C840; }
+  .actions { display: flex; gap: 6px; align-items: center; }
 
   /* ===== Buttons (macOS 风格) ===== */
   .btn {
@@ -896,15 +894,8 @@
 
   <!-- Topbar -->
   <header class="topbar">
-    <!-- macOS Traffic Lights (装饰) -->
-    <div class="traffic-lights">
-      <span class="tl-red"></span>
-      <span class="tl-yellow"></span>
-      <span class="tl-green"></span>
-    </div>
     <div class="brand">
       <img src="assets/squirrel-care.png" alt="Squirrel Care" class="brand-mark">
-      <span class="logo">🔧</span>
       <div>
         <h1>Squirrel Install</h1>
         <div class="sub">下单到安装追踪系统</div>
